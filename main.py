@@ -51,10 +51,9 @@ class Canvas(QtWidgets.QWidget):
             self.lastpoint = event.pos()
             self._changed()
 
-    def set_image(self, image):
+    def set_image(self, image, drawing):
         self.image = ImageQt(image)
-        self.canvas = QtGui.QPixmap(self.width(), self.height())
-        self.canvas.fill(QtGui.QColor(0, 0, 0, 0))
+        self.canvas = drawing
         self.image_width = image.width
         self.image_height = image.height
         self._image_changed()
@@ -82,6 +81,7 @@ class SceneViewer(QWidget):
         super().__init__()
         self.scene = Scene(flags.scene)
         self._image_cache = {}
+        self._drawings = {}
         self.setWindowTitle("Scene Viewer")
 
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -109,8 +109,12 @@ class SceneViewer(QWidget):
         if pixmap is None:
             images = self.scene.get_image_filepaths()
             self._image_cache[index] = Image.open(images[index])
+            drawing = QtGui.QPixmap(self.canvas.width(), self.canvas.height())
+            drawing.fill(QtGui.QColor(0, 0, 0, 0))
+            self._drawings[index] = drawing
         image = self._image_cache[index]
-        self.canvas.set_image(image)
+        drawing = self._drawings[index]
+        self.canvas.set_image(image, drawing)
 
     def keyPressEvent(self, event):
         key = event.key()
