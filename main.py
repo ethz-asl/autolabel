@@ -11,26 +11,33 @@ def read_args():
     parser.add_argument('scene')
     return parser.parse_args()
 
-class Canvas(QtWidgets.QLabel):
+class Canvas(QtWidgets.QWidget):
     def __init__(self, width, height):
         super().__init__()
-        self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setScaledContents(True)
-        self.mousePressEvent = self._mouse_down
-        self.mouseReleaseEvent = self._mouse_up
-        self.mouseMoveEvent = self._mouse_move
         self.brush_size = 5
         self.active = False
+        self.g_view = QtWidgets.QGraphicsView(self)
+        self.g_view.setAlignment(QtCore.Qt.AlignCenter)
+        self.g_scene = QtWidgets.QGraphicsScene(0, 0, width, height)
+        self.g_view.setScene(self.g_scene)
+        self.g_view.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.g_view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.g_view.mousePressEvent = self._mouse_down
+        self.g_view.mouseReleaseEvent = self._mouse_up
+        self.g_view.mouseMoveEvent = self._mouse_move
         self.setFixedWidth(width)
         self.setFixedHeight(height)
-
+        rect = self.rect()
+        self.g_view.setSceneRect(rect.x(), rect.y(), rect.width(), rect.height())
+        self.canvas_pixmap = None
+        self.scene_image = None
 
     def _mouse_down(self, event):
         self.active = True
         self.lastpoint = event.pos()
-        painter = QtGui.QPainter(self.image)
+        painter = QtGui.QPainter(self.canvas)
         painter.setPen(QtGui.QPen(QtCore.Qt.black, self.brush_size, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-        painter.drawPoint(self._scale(self.lastpoint))
+        painter.drawPoint(self.lastpoint)
         self._changed()
 
     def _mouse_up(self, event):
@@ -38,17 +45,19 @@ class Canvas(QtWidgets.QLabel):
 
     def _mouse_move(self, event):
         if event.buttons() & QtCore.Qt.LeftButton and self.active:
-            painter = QtGui.QPainter(self.image)
+            painter = QtGui.QPainter(self.canvas)
             painter.setPen(QtGui.QPen(QtCore.Qt.black, self.brush_size, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-            painter.drawLine(self._scale(self.lastpoint), self._scale(event.pos()))
+            painter.drawLine(self.lastpoint, event.pos())
             self.lastpoint = event.pos()
             self._changed()
 
     def set_image(self, image):
         self.image = ImageQt(image)
+        self.canvas = QtGui.QPixmap(self.width(), self.height())
+        self.canvas.fill(QtGui.QColor(0, 0, 0, 0))
         self.image_width = image.width
         self.image_height = image.height
-        self.setPixmap(QtGui.QPixmap.fromImage(self.image))
+        self._image_changed()
 
     def _scale(self, point):
         # Convert point from qt image coordinates to actual image coordinates.
@@ -56,8 +65,16 @@ class Canvas(QtWidgets.QLabel):
         y = point.y()
         return QtCore.QPoint(self.image_width / self.width() * x, self.image_height / self.height() * y)
 
+    def _image_changed(self):
+        self.scene_image = self.g_scene.addPixmap(QtGui.QPixmap.fromImage(self.image))
+        self.canvas_pixmap = self.g_scene.addPixmap(self.canvas)
+        self.scene_image.setScale(self.width() / self.image_width)
+        self.update()
+
     def _changed(self):
-        self.setPixmap(QtGui.QPixmap.fromImage(self.image))
+        self.canvas_pixmap.update()
+        self.canvas_pixmap.setPixmap(self.canvas)
+        self.g_view.update()
         self.update()
 
 class SceneViewer(QWidget):
