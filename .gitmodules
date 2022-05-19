@@ -1,0 +1,3 @@
+[submodule "torch_ngp"]
+	path = torch_ngp
+	url = git@github.com:kekeblom/torch-ngp
