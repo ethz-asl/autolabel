@@ -48,6 +48,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self._load_images()
         self._compute_rays()
         self.error_map = torch.ones([self.images.shape[0], 128 * 128], dtype=torch.float) # [B, 128 * 128], flattened for easy indexing, fixed resolution...
+        self.sample_chunk_size = 32
 
     def __iter__(self):
         for i in range(len(self)):
@@ -57,12 +58,23 @@ class SceneDataset(torch.utils.data.IterableDataset):
         return self.poses.shape[0]
 
     def _next_train(self, i):
-        image_index = np.random.randint(0, self.n_examples)
-        ray_indices = np.random.randint(0, self.resolution, (self.batch_size,))
-        pixels = self.images[image_index][ray_indices]
-        depths = self.depths[image_index][ray_indices] / 1000.0
-        ray_o = self.origins[image_index][ray_indices]
-        ray_d = self.directions[image_index][ray_indices]
+        chunks = self.batch_size // self.sample_chunk_size
+        batch_size = chunks * self.sample_chunk_size
+        pixels = np.zeros((batch_size, 3), dtype=np.float32)
+        depths = np.zeros(batch_size, dtype=np.float32)
+        ray_o = np.zeros((batch_size, 3), dtype=np.float32)
+        ray_d = np.zeros((batch_size, 3), dtype=np.float32)
+
+        for chunk in range(chunks):
+            start = chunk * self.sample_chunk_size
+            end = (chunk+1) * self.sample_chunk_size
+            image_index = np.random.randint(0, self.n_examples)
+            ray_indices = np.random.randint(0, self.resolution, (self.sample_chunk_size,))
+
+            pixels[start:end] = self.images[image_index][ray_indices]
+            depths[start:end] = self.depths[image_index][ray_indices] / 1000.0
+            ray_o[start:end] = self.origins[image_index][ray_indices]
+            ray_d[start:end] = self.directions[image_index][ray_indices]
         return { 'rays_o': ray_o, 'rays_d': ray_d, 'pixels': pixels, 'depth': depths }
 
     def _next_test(self, image_index):
