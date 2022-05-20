@@ -18,7 +18,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch_ngp.nerf.utils import Trainer
 
-DEPTH_EPSILON = 0.05
+DEPTH_EPSILON = 0.01
 
 class SimpleTrainer(Trainer):
     depth_weight = 0.05
@@ -26,7 +26,7 @@ class SimpleTrainer(Trainer):
         rays_o = data['rays_o'].to(self.device) # [B, 3]
         rays_d = data['rays_d'].to(self.device) # [B, 3]
         pixels = data['pixels'].to(self.device) # [B, 3]
-        depth = data['depth'].to(self.device) # [B, 3]
+        gt_depth = data['depth'].to(self.device) # [B, 3]
 
         B, C = pixels.shape
 
@@ -38,11 +38,11 @@ class SimpleTrainer(Trainer):
         pred_rgb = outputs['image']
         pred_depth = outputs['depth']
 
-        has_depth = (depth > DEPTH_EPSILON).to(torch.float32)
         loss = self.criterion(pred_rgb, gt_rgb).mean(-1) # [B, N, 3] --> [B, N]
-        loss += self.depth_weight * F.l1_loss(pred_depth, depth, reduction='none') * has_depth
+        # has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
+        # depth_loss = has_depth * torch.abs(pred_depth - gt_depth)
 
-        loss = loss.mean()
+        loss = loss.mean() # + self.depth_weight * depth_loss.mean()
 
         return pred_rgb, gt_rgb, loss
 
@@ -51,7 +51,7 @@ class SimpleTrainer(Trainer):
         rays_o = data['rays_o'].to(self.device) # [B, 3]
         rays_d = data['rays_d'].to(self.device) # [B, 3]
         pixels = data['pixels'].to(self.device) # [B, H, W, 3]
-        depth = data['depth'].to(self.device) # [B, H, W]
+        gt_depth = data['depth'].to(self.device) # [B, H, W]
         H, W, C = pixels.shape
 
         outputs = self.model.render(rays_o, rays_d, staged=True, bg_color=None, perturb=False, **vars(self.opt))
@@ -60,8 +60,8 @@ class SimpleTrainer(Trainer):
         pred_depth = outputs['depth'].reshape(H, W)
 
         loss = self.criterion(pred_rgb, pixels).mean()
-        has_depth = (depth > DEPTH_EPSILON).to(torch.float32)
-        loss += self.depth_weight * (F.l1_loss(pred_depth, depth, reduction='none') * has_depth).mean()
+        # has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
+        # loss += self.depth_weight * (has_depth * torch.abs(pred_depth - gt_depth)).mean()
 
         return pred_rgb[None], pred_depth[None], pixels[None], loss
 
