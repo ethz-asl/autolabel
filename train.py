@@ -13,7 +13,7 @@ import torch
 from torch import optim
 from PIL import Image
 from stray.scene import Scene
-from torch_ngp.nerf.network_tcnn import NeRFNetwork
+from torch_ngp.nerf.network_ff import NeRFNetwork
 from dataset import SceneDataset
 from trainer import SimpleTrainer
 
@@ -22,10 +22,10 @@ def read_args():
     parser.add_argument('scene')
     parser.add_argument('--factor-train', type=float, default=2.0)
     parser.add_argument('--factor-test', type=float, default=4.0)
-    parser.add_argument('--batch-size', '-b', type=int, default=2048)
+    parser.add_argument('--batch-size', '-b', type=int, default=4096)
     parser.add_argument('--out', type=str, default='/tmp/train-ngp')
     parser.add_argument('--lr', type=float, default=1e-2)
-    parser.add_argument('--iters', type=int, default=50000)
+    parser.add_argument('--iters', type=int, default=20000)
     parser.add_argument('--workers', '-w', type=int, default=1)
     return parser.parse_args()
 
@@ -38,10 +38,10 @@ def main():
     extents = train_dataset.max_bounds - train_dataset.min_bounds
     bound = (extents - (train_dataset.min_bounds + train_dataset.max_bounds) * 0.5).max()
     model = NeRFNetwork(num_layers=4, num_layers_color=4,
-            hidden_dim_color=128,
-            hidden_dim=256,
-            geo_feat_dim=128,
-            encoding="frequency",
+            hidden_dim_color=64,
+            hidden_dim=64,
+            geo_feat_dim=15,
+            encoding="hashgrid",
             bound=float(bound),
             cuda_ray=False,
             density_scale=1)
@@ -61,8 +61,8 @@ def main():
     criterion = torch.nn.MSELoss(reduction='none')
     min_lr = 1e-7
     gamma = 0.9
-    steps = math.log(1e-8, 0.9)
-    step_size = flags.iters // steps // len(train_dataset)
+    steps = math.log(1e-6, 0.9)
+    step_size = max(flags.iters // steps // len(train_dataset), 1)
     print('step_size', step_size)
     scheduler = lambda optimizer: optim.lr_scheduler.StepLR(optimizer, gamma=gamma, step_size=step_size)
 
@@ -78,7 +78,7 @@ def main():
             scheduler_update_every_step=False,
             metrics=[],
             use_checkpoint='latest',
-            eval_interval=50)
+            eval_interval=10)
     trainer.train(train_dataloader, val_dataloader, epochs)
     trainer.evaluate(val_dataloader)
 
