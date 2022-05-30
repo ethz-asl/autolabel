@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import torch
 import pickle
+import random
 from PIL import Image
 from stray.scene import Scene
 from stray import linalg
@@ -31,6 +32,7 @@ class LazyImageLoader:
         return [len(self)]
 
 class SceneDataset(torch.utils.data.IterableDataset):
+    semantic_image_sample_ratio = 0.75
     def __init__(self, split, scene, factor=4.0, batch_size=4096, lazy=False):
         self.lazy = lazy
         self.split = split
@@ -64,31 +66,39 @@ class SceneDataset(torch.utils.data.IterableDataset):
         batch_size = chunks * self.sample_chunk_size
         pixels = np.zeros((batch_size, 3), dtype=np.float32)
         depths = np.zeros(batch_size, dtype=np.float32)
+        semantics = np.zeros(batch_size, dtype=int)
         ray_o = np.zeros((batch_size, 3), dtype=np.float32)
         ray_d = np.zeros((batch_size, 3), dtype=np.float32)
 
+        sampled_indices = np.random.randint(0, self.resolution, (batch_size,))
         for chunk in range(chunks):
+            if self.semantic_image_indices.size > 0 and random.random() < self.semantic_image_sample_ratio:
+                image_index = np.random.choice(self.semantic_image_indices)
+            else:
+                image_index = np.random.randint(0, self.n_examples)
             start = chunk * self.sample_chunk_size
             end = (chunk+1) * self.sample_chunk_size
-            image_index = np.random.randint(0, self.n_examples)
-            ray_indices = np.random.randint(0, self.resolution, (self.sample_chunk_size,))
+            ray_indices = sampled_indices[start:end]
 
             pixels[start:end] = self.images[image_index][ray_indices]
             depths[start:end] = self.depths[image_index][ray_indices] / 1000.0
+            semantics[start:end] = self.semantics[image_index][ray_indices].astype(int) - 1
             ray_o[start:end] = self.origins[image_index][ray_indices]
             ray_d[start:end] = self.directions[image_index][ray_indices]
-        return { 'rays_o': ray_o, 'rays_d': ray_d, 'pixels': pixels, 'depth': depths }
+        return { 'rays_o': ray_o, 'rays_d': ray_d, 'pixels': pixels, 'depth': depths, 'semantic': semantics }
 
     def _next_test(self, image_index):
         image = self.images[image_index]
         ray_o = self.origins[image_index]
         ray_d = self.directions[image_index]
         depth = self.depths[image_index] / 1000.0
-        return { 'pixels': image, 'rays_o': ray_o, 'rays_d': ray_d, 'depth': depth }
+        semantic = self.semantics[image_index].astype(int) - 1
+        return { 'pixels': image, 'rays_o': ray_o, 'rays_d': ray_d, 'depth': depth, 'semantic': semantic }
 
     def _load_images(self):
         images = []
         depths = []
+        semantics = []
         cameras = []
 
         color_images = self.scene.get_image_filepaths()
@@ -109,6 +119,14 @@ class SceneDataset(torch.utils.data.IterableDataset):
                 image = cv2.resize(image, self.camera.size, interpolation=cv2.INTER_AREA)
                 images.append(image)
 
+            semantic_path = os.path.join(self.scene.scene_path, 'semantic', os.path.basename(depth_images[index]))
+            if os.path.exists(semantic_path):
+                image = Image.open(semantic_path)
+                image = image.resize(self.camera.size, Image.NEAREST)
+                semantics.append(np.asarray(image))
+            else:
+                semantics.append(np.zeros(self.camera.size[::-1], dtype=np.uint8))
+
             T_WC = poses[index] @ CV_TO_OPENGL
             T_WC = nerf_matrix_to_ngp(T_WC, scale=1.0)
             cameras.append(T_WC.astype(np.float32))
@@ -125,7 +143,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
         aabb = metadata['aabb']
 
         self.depths = np.stack(depths)
+        self.semantics = np.stack(semantics)
         self.poses = np.stack(cameras, axis=0)
+        mask = np.any(np.any(self.semantics > 0, axis=-1), axis=-1)
+        self.semantic_image_indices = np.arange(mask.size)[mask]
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
         self.h = self.camera.size[1]
@@ -157,6 +178,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         if self.split == "train":
             self.images = self.images.reshape(self.n_examples, self.resolution, 3)
             self.depths = self.depths.reshape(self.n_examples, self.resolution)
+            self.semantics = self.semantics.reshape(self.n_examples, self.resolution)
         elif self.split == 'test':
             origins = origins.reshape(self.n_examples, self.h, self.w, 3)
             directions = directions.reshape(self.n_examples, self.h, self.w, 3)
