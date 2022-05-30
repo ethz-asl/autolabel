@@ -27,21 +27,19 @@ def read_args():
 class Canvas(QtWidgets.QWidget):
     def __init__(self, width, height):
         super().__init__()
+        self.canvas_width = int(width)
+        self.canvas_height = int(height)
         self.brush_size = 5
         self.active = False
+
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.g_view = QtWidgets.QGraphicsView(self)
-        self.g_view.setAlignment(QtCore.Qt.AlignCenter)
+        self.g_view.setSceneRect(0, 0, self.canvas_width, self.canvas_height)
         self.g_scene = QtWidgets.QGraphicsScene(0, 0, width, height)
         self.g_view.setScene(self.g_scene)
-        self.g_view.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.g_view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.g_view.mousePressEvent = self._mouse_down
         self.g_view.mouseReleaseEvent = self._mouse_up
         self.g_view.mouseMoveEvent = self._mouse_move
-        self.setFixedWidth(width)
-        self.setFixedHeight(height)
-        rect = self.rect()
-        self.g_view.setSceneRect(rect.x(), rect.y(), rect.width(), rect.height())
         self.canvas_pixmap = None
         self.scene_image = None
         self.active_class = 1
@@ -52,7 +50,7 @@ class Canvas(QtWidgets.QWidget):
 
     def _mouse_down(self, event):
         self.active = True
-        self.lastpoint = event.pos()
+        self.lastpoint = self._scale(event.pos())
         self.painter.drawPoint(self.lastpoint)
         self._changed()
 
@@ -61,8 +59,8 @@ class Canvas(QtWidgets.QWidget):
 
     def _mouse_move(self, event):
         if event.buttons() & QtCore.Qt.LeftButton and self.active:
-            self.painter.drawLine(self.lastpoint, event.pos())
-            self.lastpoint = event.pos()
+            self.painter.drawLine(self.lastpoint, self._scale(event.pos()))
+            self.lastpoint = self._scale(event.pos())
             self._changed()
 
     def set_image(self, image, drawing):
@@ -72,16 +70,10 @@ class Canvas(QtWidgets.QWidget):
         self.image_height = image.height
         self._image_changed()
 
-    def _scale(self, point):
-        # Convert point from qt image coordinates to actual image coordinates.
-        x = point.x()
-        y = point.y()
-        return QtCore.QPoint(self.image_width / self.width() * x, self.image_height / self.height() * y)
-
     def _image_changed(self):
         self.scene_image = self.g_scene.addPixmap(QtGui.QPixmap.fromImage(self.image))
         self.canvas_pixmap = self.g_scene.addPixmap(self.canvas)
-        self.scene_image.setScale(self.width() / self.image_width)
+        self.scene_image.setScale(self.canvas_width / self.image_width)
         self.update()
         self.set_class(self.active_class)
 
@@ -91,12 +83,31 @@ class Canvas(QtWidgets.QWidget):
         self.g_view.update()
         self.update()
 
+    def _scale(self, point):
+        # Scales a point from view coordinates to canvas coordinates.
+        return self.g_view.mapToScene(point)
+
     def set_class(self, class_index):
         self.active_class = class_index
         self.painter = None
         self.painter = QtGui.QPainter(self.canvas)
         self.painter.setPen(QtGui.QPen(self.color, self.brush_size, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         self.painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(self.canvas_width, self.canvas_height)
+
+    def resizeEvent(self, event):
+        self.sizeChanged(event.size())
+
+    def showEvent(self, event):
+        self.sizeChanged(self.size())
+
+    def sizeChanged(self, size):
+        self.g_view.setFixedWidth(size.width())
+        self.g_view.setFixedHeight(size.height())
+        self.g_view.fitInView(0, 0, self.canvas_width, self.canvas_height, QtCore.Qt.KeepAspectRatio)
+
 
 class SceneViewer(QWidget):
     def __init__(self, flags):
@@ -140,7 +151,7 @@ class SceneViewer(QWidget):
 
         drawing = self._drawings.get(index, None)
         if drawing is None:
-            drawing = QtGui.QPixmap(self.canvas.width(), self.canvas.height())
+            drawing = QtGui.QPixmap(self.canvas.canvas_width, self.canvas.canvas_height)
             drawing.fill(QtGui.QColor(0, 0, 0, 0))
             self._drawings[index] = drawing
         image = self._image_cache[index]
@@ -193,6 +204,7 @@ class SceneViewer(QWidget):
             class_index = 0
         self.canvas.set_class(class_index)
         self.class_label.setText(f"Current class: {self.canvas.active_class}")
+
 
 if __name__ == "__main__":
     flags = read_args()
