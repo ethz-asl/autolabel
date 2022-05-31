@@ -2,13 +2,13 @@ import argparse
 import os
 import random
 import numpy as np
-import multiprocessing
 from stray.scene import Scene
 from PIL import Image
 from PIL.ImageQt import ImageQt, fromqimage
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
 from train import TrainingLoop
+from torch import multiprocessing
 from torch.multiprocessing import Process
 import signal
 
@@ -31,12 +31,25 @@ def read_args():
     return parser.parse_args()
 
 def training_loop(flags, connection):
-    training_loop = TrainingLoop(flags.scene, flags)
+    training_loop = TrainingLoop(flags.scene, flags, connection)
     signal.signal(signal.SIGTERM, training_loop.shutdown)
-    training_loop.run(connection)
+    training_loop.run()
+
+class MessageBus:
+    def __init__(self, connection):
+        self.lock = multiprocessing.Lock()
+        self.connection = connection
+
+    def get_image(self, image_index):
+        with self.lock:
+            self.connection.send(('get_image', image_index))
+
+    def update_image(self, image_index):
+        with self.lock:
+            self.connection.send(('update_image', image_index))
 
 class Canvas(QtWidgets.QWidget):
-    def __init__(self, width, height):
+    def __init__(self, width, height, cb):
         super().__init__()
         self.canvas_width = int(width)
         self.canvas_height = int(height)
@@ -55,6 +68,7 @@ class Canvas(QtWidgets.QWidget):
         self.scene_image = None
         self.active_class = 1
         self.inferred_image = None
+        self.callback = cb
 
     @property
     def color(self):
@@ -68,6 +82,7 @@ class Canvas(QtWidgets.QWidget):
 
     def _mouse_up(self, event):
         self.active = False
+        self.callback()
 
     def _mouse_move(self, event):
         if event.buttons() & QtCore.Qt.LeftButton and self.active:
@@ -76,6 +91,7 @@ class Canvas(QtWidgets.QWidget):
             self._changed()
 
     def set_image(self, image, drawing):
+        self.painter = None
         self.image = ImageQt(image)
         self.canvas = drawing
         self.image_width = image.width
@@ -157,7 +173,7 @@ class SceneViewer(QWidget):
         size = self.scene.camera().size
         width = 720
         image_height = width / size[0] * size[1]
-        self.canvas = Canvas(width, image_height)
+        self.canvas = Canvas(width, image_height, self._canvas_callback)
 
         self.class_label = QtWidgets.QLabel("Current class: 1")
         self.bottom_bar = QtWidgets.QHBoxLayout()
@@ -171,6 +187,7 @@ class SceneViewer(QWidget):
 
         self.load()
         self.connection, child_connection = multiprocessing.Pipe()
+        self.message_bus = MessageBus(self.connection)
         self.process = Process(target=training_loop, args=(flags, child_connection))
         self.process.start()
 
@@ -189,13 +206,19 @@ class SceneViewer(QWidget):
         if self.connection is None:
             return
         print(f"requesting {self.current_image_index}")
-        self.connection.send(self.current_image_index)
+        self.message_bus.get_image(self.current_image_index)
 
     def _update_image(self):
         if self.connection.poll():
             image_index, image = self.connection.recv()
             if image_index == self.current_image_index:
                 self.canvas.set_inferred(image.numpy())
+
+    def _canvas_callback(self):
+        # Called when the mouse button is lifted on the canvas.
+        print(f'Saving image {self.current_image_index}')
+        self._save_image(self.current_image_index)
+        self.message_bus.update_image(self.current_image_index)
 
     def _slider_value_change(self):
         self._set_image(self.slider.value())
@@ -226,22 +249,28 @@ class SceneViewer(QWidget):
             self.set_class(NUM_KEYS.index(key))
         elif key == QtCore.Qt.Key_S and modifiers == QtCore.Qt.ControlModifier:
             self.save()
+        elif key == QtCore.Qt.Key_C:
+            self.clear_image()
 
     def save(self):
+        for image_index in self._drawings.keys():
+            self._save_image(image_index)
+
+    def _save_image(self, image_index):
         semantic_dir = os.path.join(self.scene.scene_path, 'semantic')
         os.makedirs(semantic_dir, exist_ok=True)
-        for image_index, drawing in self._drawings.items():
-            array = np.asarray(fromqimage(drawing.toImage()))[:, :, :3]
-            if array.max() == 0:
-                # Canvas is empty. Skip.
-                continue
-            out_map = np.zeros(array.shape[:2], dtype=np.uint8)
-            for i, color in enumerate(COLORS):
-                where_color = np.linalg.norm(array - color, 1, axis=-1) < 3
-                # Store index + 1 as 0 is the null class.
-                out_map[where_color] = i + 1
-            path = os.path.join(semantic_dir, f"{image_index:06}.png")
-            Image.fromarray(out_map).save(path)
+        drawing = self._drawings[image_index]
+        array = np.asarray(fromqimage(drawing.toImage()))[:, :, :3]
+        if array.max() == 0:
+            # Canvas is empty. Skip.
+            return
+        out_map = np.zeros(array.shape[:2], dtype=np.uint8)
+        for i, color in enumerate(COLORS):
+            where_color = np.linalg.norm(array - color, 1, axis=-1) < 3
+            # Store index + 1 as 0 is the null class.
+            out_map[where_color] = i + 1
+        path = os.path.join(semantic_dir, f"{image_index:06}.png")
+        Image.fromarray(out_map).save(path)
 
     def load(self):
         semantic_dir = os.path.join(self.scene.scene_path, 'semantic')
@@ -258,6 +287,15 @@ class SceneViewer(QWidget):
             colors[where_non_null, :3] = COLORS[array[where_non_null] - 1]
             qimage = ImageQt(Image.fromarray(colors))
             self._drawings[image_index] = QtGui.QPixmap.fromImage(qimage)
+
+    def clear_image(self):
+        drawing = QtGui.QPixmap(self.canvas.canvas_width, self.canvas.canvas_height)
+        drawing.fill(QtGui.QColor(0, 0, 0, 0))
+        self._drawings[self.current_image_index] = drawing
+        self._set_image(self.current_image_index)
+        image = self._image_cache[self.current_image_index]
+        self.canvas.set_image(image, drawing)
+        self._canvas_callback()
 
     def set_class(self, class_index):
         if class_index == self.canvas.active_class:

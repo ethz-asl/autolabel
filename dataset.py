@@ -49,6 +49,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self._compute_rays()
         self.error_map = None
         self.sample_chunk_size = 64
+        self.semantic_image_indices = np.array([])
 
     def __iter__(self):
         if self.split == "train":
@@ -144,8 +145,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.depths = np.stack(depths)
         self.semantics = np.stack(semantics)
         self.poses = np.stack(cameras, axis=0)
-        mask = np.any(np.any(self.semantics > 0, axis=-1), axis=-1)
-        self.semantic_image_indices = np.arange(mask.size)[mask]
+        self._update_semantic_indices()
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
         self.h = self.camera.size[1]
@@ -184,4 +184,22 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
         self.origins = origins
         self.directions = directions
+
+    def semantic_map_updated(self, image_index):
+        semantic_path = os.path.join(self.scene.scene_path, 'semantic', f"{image_index:06}.png")
+        if os.path.exists(semantic_path):
+            image = Image.open(semantic_path)
+            image = np.asarray(image.resize(self.camera.size, Image.NEAREST))
+            self.semantics[image_index, :] = image.reshape(self.resolution)
+            self._update_semantic_indices()
+        else:
+            print(f"Could not find image {semantic_path}")
+
+    def _update_semantic_indices(self):
+        indices = []
+        for i, semantic in enumerate(self.semantics):
+            if np.any(semantic > 0):
+                indices.append(i)
+        self.semantic_image_indices = np.array(indices)
+
 

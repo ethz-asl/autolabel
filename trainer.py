@@ -126,6 +126,9 @@ class InteractiveTrainer(SimpleTrainer):
             self._step_scheduler(loss)
         return loss
 
+    def dataset_updated(self, loader):
+        self.loader = loader
+
     def _step_scheduler(self, loss):
         if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             self.lr_scheduler.step(loss)
