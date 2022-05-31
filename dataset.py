@@ -45,23 +45,20 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.resolution = small_size[0] * small_size[1]
         self.camera = self.scene.camera().scale(small_size)
         self.intrinsics = np.array([self.camera.camera_matrix[0, 0], self.camera.camera_matrix[1, 1], self.camera.camera_matrix[0, 2], self.camera.camera_matrix[1, 2]])
-        if split == "train":
-            self.next_fn = self._next_train
-        else:
-            self.next_fn = self._next_test
         self._load_images()
         self._compute_rays()
         self.error_map = None
         self.sample_chunk_size = 64
 
     def __iter__(self):
-        for i in range(len(self)):
-            yield self.next_fn(i)
+        if self.split == "train":
+            while True:
+                yield self._next_train()
+        else:
+            for i in range(self.poses.shape[0]):
+                yield self._get_test(i)
 
-    def __len__(self):
-        return self.poses.shape[0]
-
-    def _next_train(self, i):
+    def _next_train(self):
         chunks = self.batch_size // self.sample_chunk_size
         batch_size = chunks * self.sample_chunk_size
         pixels = np.zeros((batch_size, 3), dtype=np.float32)
@@ -87,13 +84,15 @@ class SceneDataset(torch.utils.data.IterableDataset):
             ray_d[start:end] = self.directions[image_index][ray_indices]
         return { 'rays_o': ray_o, 'rays_d': ray_d, 'pixels': pixels, 'depth': depths, 'semantic': semantics }
 
-    def _next_test(self, image_index):
-        image = self.images[image_index]
-        ray_o = self.origins[image_index]
-        ray_d = self.directions[image_index]
-        depth = self.depths[image_index] / 1000.0
-        semantic = self.semantics[image_index].astype(int) - 1
-        return { 'pixels': image, 'rays_o': ray_o, 'rays_d': ray_d, 'depth': depth, 'semantic': semantic }
+    def _get_test(self, image_index):
+        image = self.images[image_index].reshape(self.h, self.w, 3)
+        ray_o = self.origins[image_index].reshape(self.h, self.w, 3)
+        ray_d = self.directions[image_index].reshape(self.h, self.w, 3)
+        depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
+        semantic = (self.semantics[image_index].astype(int) - 1).reshape(self.h, self.w)
+        return { 'pixels': image, 'rays_o': ray_o,
+                'rays_d': ray_d, 'depth': depth, 'semantic': semantic,
+                'H': self.h, 'W': self.w }
 
     def _load_images(self):
         images = []

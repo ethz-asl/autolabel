@@ -3,18 +3,17 @@ import glob
 import tqdm
 import math
 import random
-import warnings
-
-import numpy as np
-from torch.nn import functional as F
-
 import time
+from tqdm import tqdm
+import numpy as np
 from datetime import datetime
 
 import cv2
 
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
+from torch import optim
 from torch.utils.data import Dataset, DataLoader
 from torch_ngp.nerf.utils import Trainer
 
@@ -78,22 +77,59 @@ class SimpleTrainer(Trainer):
 
         return pred_rgb[None], pred_depth[None], pred_semantic[None], gt_rgb[None], loss
 
-    # moved out bg_color and perturb for more flexible control...
-    def test_step(self, data, bg_color=None, perturb=False):
+class InteractiveTrainer(SimpleTrainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loader = None
 
-        rays_o = data['rays_o'] # [B, N, 3]
-        rays_d = data['rays_d'] # [B, N, 3]
-        H, W = data['H'], data['W']
+    def init(self, loader):
+        self.model.train()
+        self.iterator = iter(loader)
+        self.step = 0
+        self.model.mark_untrained_grid(loader._data.poses, loader._data.intrinsics)
 
-        if bg_color is not None:
-            bg_color = bg_color.to(self.device)
+    def train(self, loader):
+        while True:
+            self.model.train()
+            self.train_one_epoch(loader)
 
-        outputs = self.model.render(rays_o, rays_d, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt))
+    def train_one_epoch(self, loader):
+        iterator = iter(loader)
+        bar = tqdm(range(1000), desc="Loss: N/A")
+        for _ in bar:
+            data = next(iterator)
+            self.optimizer.zero_grad()
+            with torch.cuda.amp.autocast(enabled=self.fp16):
+                _, _, loss = self.train_step(data)
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            bar.set_description(f"Loss: {loss:.04f}")
+        if self.ema is not None:
+            self.ema.update()
+        self._step_scheduler(loss)
 
-        pred_rgb = outputs['image'].reshape(-1, H, W, 3)
-        pred_depth = outputs['depth'].reshape(-1, H, W)
-        pred_semantic = F.softmax(outputs['semantic'], dim=-1)
-        pred_semantic = pred_semantic.reshape(-1, H, W)
+    def take_step(self):
+        data = next(self.iterator)
+        self.optimizer.zero_grad()
 
-        return pred_rgb, pred_depth, pred_semantic
+        with torch.cuda.amp.autocast(enabled=self.fp16):
+            _, _, loss = self.train_step(data)
+
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+
+        self.step += 1
+        if self.step % 100 == 0:
+            self.ema.update()
+            self._step_scheduler(loss)
+        return loss
+
+    def _step_scheduler(self, loss):
+        if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+            self.lr_scheduler.step(loss)
+        else:
+            self.lr_scheduler.step(loss)
+
 

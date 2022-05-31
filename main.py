@@ -2,11 +2,15 @@ import argparse
 import os
 import random
 import numpy as np
+import multiprocessing
 from stray.scene import Scene
 from PIL import Image
 from PIL.ImageQt import ImageQt, fromqimage
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
+from train import TrainingLoop
+from torch.multiprocessing import Process
+import signal
 
 COLORS = np.array([
     [52, 137, 235],
@@ -22,7 +26,14 @@ NUM_KEYS = [
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
+    parser.add_argument('--batch-size', type=int, default=2048)
+    parser.add_argument('--lr', type=float, default=1e-3)
     return parser.parse_args()
+
+def training_loop(flags, connection):
+    training_loop = TrainingLoop(flags.scene, flags)
+    signal.signal(signal.SIGTERM, training_loop.shutdown)
+    training_loop.run(connection)
 
 class Canvas(QtWidgets.QWidget):
     def __init__(self, width, height):
@@ -108,7 +119,6 @@ class Canvas(QtWidgets.QWidget):
         self.g_view.setFixedHeight(size.height())
         self.g_view.fitInView(0, 0, self.canvas_width, self.canvas_height, QtCore.Qt.KeepAspectRatio)
 
-
 class SceneViewer(QWidget):
     def __init__(self, flags):
         super().__init__()
@@ -139,11 +149,29 @@ class SceneViewer(QWidget):
 
         self.load()
         self._set_image(0)
+        self.connection, child_connection = multiprocessing.Pipe()
+        self.process = Process(target=training_loop, args=(flags, child_connection))
+        self.process.start()
+
+        timer = QtCore.QTimer()
+        timer.singleShot(1000, self._update_image)
+
+    def _update_image(self):
+        if self.connection is None:
+            return
+        self.connection.send(self.current_image_index)
+        timer = QtCore.QTimer()
+        timer.singleShot(5000, self._update_image)
+        timer.start()
+        if self.connection.poll():
+            image = self.connection.recv()
+            print(image)
 
     def _slider_value_change(self):
         self._set_image(self.slider.value())
 
     def _set_image(self, index):
+        self.current_image_index = index
         pixmap = self._image_cache.get(index, None)
         if pixmap is None:
             images = self.scene.get_image_filepaths()
@@ -161,7 +189,7 @@ class SceneViewer(QWidget):
         key = event.key()
         modifiers = QtWidgets.QApplication.keyboardModifiers()
         if key == QtCore.Qt.Key_Escape or key == QtCore.Qt.Key_Q:
-            self.close()
+            self.shutdown()
         elif key in NUM_KEYS:
             self.set_class(NUM_KEYS.index(key))
         elif key == QtCore.Qt.Key_S and modifiers == QtCore.Qt.ControlModifier:
@@ -205,8 +233,16 @@ class SceneViewer(QWidget):
         self.canvas.set_class(class_index)
         self.class_label.setText(f"Current class: {self.canvas.active_class}")
 
+    def closeEvent(self, event):
+        self.process.join()
+
+    def shutdown(self):
+        self.process.terminate()
+        self.process.join()
+        self.close()
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn')
     flags = read_args()
     app = QApplication([])
     viewer = SceneViewer(flags)
