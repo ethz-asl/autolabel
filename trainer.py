@@ -130,6 +130,6 @@ class InteractiveTrainer(SimpleTrainer):
         if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             self.lr_scheduler.step(loss)
         else:
-            self.lr_scheduler.step(loss)
+            self.lr_scheduler.step()
 
 

@@ -15,7 +15,7 @@ from PIL import Image
 from stray.scene import Scene
 from torch_ngp.nerf.network_ff import NeRFNetwork
 from dataset import SceneDataset
-from trainer import InteractiveTrainer
+from trainer import SimpleTrainer
 
 def read_args():
     parser = argparse.ArgumentParser()
@@ -23,7 +23,6 @@ def read_args():
     parser.add_argument('--factor-train', type=float, default=2.0)
     parser.add_argument('--factor-test', type=float, default=4.0)
     parser.add_argument('--batch-size', '-b', type=int, default=4096)
-    parser.add_argument('--out', type=str, default='/tmp/train-ngp')
     parser.add_argument('--lr', type=float, default=1e-2)
     parser.add_argument('--iters', type=int, default=20000)
     parser.add_argument('--workers', '-w', type=int, default=1)
@@ -40,6 +39,19 @@ def create_model(dataset):
             bound=float(bound),
             cuda_ray=False,
             density_scale=1)
+
+class LenDataset(torch.utils.data.IterableDataset):
+    def __init__(self, dataset, length):
+        self.dataset = dataset
+        self.length = length
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        for _ in range(self.length):
+            yield next(iterator)
+
+    def __len__(self):
+        return self.length
 
 class TrainingLoop:
     def __init__(self, scene, flags):
@@ -61,7 +73,6 @@ class TrainingLoop:
         criterion = torch.nn.MSELoss(reduction='none')
         min_lr = 1e-7
         gamma = 0.9
-        image_count = len(self.train_dataset.images)
         scheduler = lambda optimizer: optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=gamma,
                 patience=5,
                 min_lr=min_lr)
@@ -129,24 +140,24 @@ def main():
         {'name': 'net', 'params': list(model.sigma_net.parameters()) + list(model.color_net.parameters()), 'weight_decay': 1e-6},
     ], lr=flags.lr, betas=(0.9, 0.99), eps=1e-15)
 
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=None, num_workers=flags.workers)
+    train_dataloader = torch.utils.data.DataLoader(LenDataset(train_dataset, 1000),
+            batch_size=None, num_workers=flags.workers)
     train_dataloader._data = train_dataset
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=None)
+    val_dataloader = torch.utils.data.DataLoader(LenDataset(val_dataset, len(val_dataset.images)), batch_size=None)
     val_dataloader._data = val_dataset
 
     criterion = torch.nn.MSELoss(reduction='none')
     min_lr = 1e-7
-    gamma = 0.9
-    steps = math.log(1e-6, 0.9)
-    image_count = len(val_dataset.images)
-    step_size = max(flags.iters // steps // image_count, 1)
-    print('step_size', step_size)
+    gamma = 0.5
+    steps = math.log(1e-6, gamma)
+    step_size = max(flags.iters // steps // 1000, 1)
     scheduler = lambda optimizer: optim.lr_scheduler.StepLR(optimizer, gamma=gamma, step_size=step_size)
 
-    epochs = int(np.ceil(flags.iters / image_count))
-    trainer = InteractiveTrainer('ngp', opt, model,
+    epochs = int(np.ceil(flags.iters / 1000))
+    workspace = os.path.join(flags.scene, 'nerf')
+    trainer = SimpleTrainer('ngp', opt, model,
             device='cuda:0',
-            workspace=flags.out,
+            workspace=workspace,
             optimizer=optimizer,
             criterion=criterion,
             fp16=True,
@@ -155,9 +166,8 @@ def main():
             scheduler_update_every_step=False,
             metrics=[],
             use_checkpoint='latest',
-            eval_interval=5)
-    trainer.train(train_dataloader)
-    trainer.evaluate(val_dataloader)
+            eval_interval=10)
+    trainer.train(train_dataloader, val_dataloader, epochs)
 
 if __name__ == "__main__":
     main()
