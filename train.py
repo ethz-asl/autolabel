@@ -15,7 +15,7 @@ from PIL import Image
 from stray.scene import Scene
 from torch_ngp.nerf.network_ff import NeRFNetwork
 from dataset import SceneDataset
-from trainer import SimpleTrainer
+from trainer import SimpleTrainer, InteractiveTrainer
 
 def read_args():
     parser = argparse.ArgumentParser()
@@ -100,11 +100,16 @@ class TrainingLoop:
                 break
             has_messages = connection.poll()
             if has_messages:
-                message = connection.recv()
-                image = self._process_message(message)
-                connection.send(image)
-            loss = self.trainer.take_step()
-            print(f"loss: {loss:.04f}", end='\r')
+                messages = []
+                while connection.poll():
+                    # Empty queue and only get last message in case
+                    # We aren't keeping up with the traffic.
+                    messages.append(connection.recv())
+                image_index = messages[-1]
+                image = self._process_message(image_index)
+                print(f"Sending {image_index}")
+                connection.send((image_index, image))
+            self.trainer.take_step()
 
     def _process_message(self, image_index):
         # Image was requested from the other end.

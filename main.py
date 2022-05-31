@@ -54,6 +54,7 @@ class Canvas(QtWidgets.QWidget):
         self.canvas_pixmap = None
         self.scene_image = None
         self.active_class = 1
+        self.inferred_image = None
 
     @property
     def color(self):
@@ -82,8 +83,16 @@ class Canvas(QtWidgets.QWidget):
         self._image_changed()
 
     def _image_changed(self):
+        if self.scene_image is not None:
+            self.g_scene.removeItem(self.scene_image)
+        if self.canvas_pixmap is not None:
+            self.g_scene.removeItem(self.canvas_pixmap)
+        if self.inferred_image is not None:
+            self.g_scene.removeItem(self.inferred_image)
+            self.inferred_image = None
         self.scene_image = self.g_scene.addPixmap(QtGui.QPixmap.fromImage(self.image))
         self.canvas_pixmap = self.g_scene.addPixmap(self.canvas)
+        self.canvas_pixmap.setZValue(2.0)
         self.scene_image.setScale(self.canvas_width / self.image_width)
         self.update()
         self.set_class(self.active_class)
@@ -104,6 +113,19 @@ class Canvas(QtWidgets.QWidget):
         self.painter = QtGui.QPainter(self.canvas)
         self.painter.setPen(QtGui.QPen(self.color, self.brush_size, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         self.painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
+
+    def set_inferred(self, image):
+        print("updating inferred")
+        image = COLORS[image]
+        alpha = np.ones_like(image[:, :, :1]) * 120
+        image = np.concatenate([image, alpha], axis=-1)
+        image = Image.fromarray(image).resize((self.canvas_width, self.canvas_height), Image.NEAREST)
+        pixmap = QtGui.QPixmap.fromImage(ImageQt(image))
+        if self.inferred_image is not None:
+            self.g_scene.removeItem(self.inferred_image)
+        self.inferred_image = self.g_scene.addPixmap(pixmap)
+        self.inferred_image.setZValue(1.0)
+        print("updated inferred")
 
     def minimumSizeHint(self):
         return QtCore.QSize(self.canvas_width, self.canvas_height)
@@ -148,24 +170,32 @@ class SceneViewer(QWidget):
         self.setLayout(self.layout)
 
         self.load()
-        self._set_image(0)
         self.connection, child_connection = multiprocessing.Pipe()
         self.process = Process(target=training_loop, args=(flags, child_connection))
         self.process.start()
 
-        timer = QtCore.QTimer()
-        timer.singleShot(1000, self._update_image)
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self._request_image)
+        self.timer.setInterval(5000)
+        self.timer.start(5000)
+        self.image_loop_timer = QtCore.QTimer()
+        self.image_loop_timer.timeout.connect(self._update_image)
+        self.image_loop_timer.setInterval(50)
+        self.image_loop_timer.start(50)
 
-    def _update_image(self):
+        self._set_image(0)
+
+    def _request_image(self):
         if self.connection is None:
             return
+        print(f"requesting {self.current_image_index}")
         self.connection.send(self.current_image_index)
-        timer = QtCore.QTimer()
-        timer.singleShot(5000, self._update_image)
-        timer.start()
+
+    def _update_image(self):
         if self.connection.poll():
-            image = self.connection.recv()
-            print(image)
+            image_index, image = self.connection.recv()
+            if image_index == self.current_image_index:
+                self.canvas.set_inferred(image.numpy())
 
     def _slider_value_change(self):
         self._set_image(self.slider.value())
@@ -184,6 +214,8 @@ class SceneViewer(QWidget):
             self._drawings[index] = drawing
         image = self._image_cache[index]
         self.canvas.set_image(image, drawing)
+        self._request_image()
+        self.timer.start(5000)
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -234,12 +266,13 @@ class SceneViewer(QWidget):
         self.class_label.setText(f"Current class: {self.canvas.active_class}")
 
     def closeEvent(self, event):
+        self.process.terminate()
         self.process.join()
 
     def shutdown(self):
+        self.close()
         self.process.terminate()
         self.process.join()
-        self.close()
 
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn')
