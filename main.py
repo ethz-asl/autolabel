@@ -22,12 +22,13 @@ NUM_KEYS = [
     QtCore.Qt.Key_0,
     QtCore.Qt.Key_1
 ]
+INFERENCE_UPDATE_INTERVAL = 2500
 
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
-    parser.add_argument('--batch-size', type=int, default=2048)
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--batch-size', type=int, default=4096)
+    parser.add_argument('--lr', type=float, default=1e-4)
     return parser.parse_args()
 
 def training_loop(flags, connection):
@@ -193,8 +194,8 @@ class SceneViewer(QWidget):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self._request_image)
-        self.timer.setInterval(5000)
-        self.timer.start(5000)
+        self.timer.setInterval(INFERENCE_UPDATE_INTERVAL)
+        self.timer.start(INFERENCE_UPDATE_INTERVAL)
         self.image_loop_timer = QtCore.QTimer()
         self.image_loop_timer.timeout.connect(self._update_image)
         self.image_loop_timer.setInterval(50)
@@ -238,7 +239,7 @@ class SceneViewer(QWidget):
         image = self._image_cache[index]
         self.canvas.set_image(image, drawing)
         self._request_image()
-        self.timer.start(5000)
+        self.timer.start(INFERENCE_UPDATE_INTERVAL)
 
     def keyPressEvent(self, event):
         key = event.key()

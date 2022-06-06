@@ -59,7 +59,9 @@ class TrainingLoop:
         self.workspace = os.path.join(scene, 'nerf')
         self.train_dataset = SceneDataset('train', scene, factor=4.0,
                 batch_size=flags.batch_size)
+        print("Created train dataset")
         self.model = create_model(self.train_dataset)
+        print("Created model")
         self.optimizer = lambda model: torch.optim.Adam([
             {'name': 'encoding', 'params': list(model.encoder.parameters())},
             {'name': 'net', 'params': list(model.sigma_net.parameters()) + list(model.color_net.parameters()), 'weight_decay': 1e-6},
@@ -85,6 +87,7 @@ class TrainingLoop:
                 lr_scheduler=scheduler,
                 metrics=[],
                 use_checkpoint='latest')
+        print("Initialized trainer")
 
     def _create_dataloader(self, dataset):
         loader = torch.utils.data.DataLoader(dataset,
@@ -164,7 +167,7 @@ def main():
     criterion = torch.nn.MSELoss(reduction='none')
     min_lr = 1e-7
     gamma = 0.5
-    steps = math.log(1e-6, gamma)
+    steps = math.log(1e-6 / flags.lr, gamma)
     step_size = max(flags.iters // steps // 1000, 1)
     scheduler = lambda optimizer: optim.lr_scheduler.StepLR(optimizer, gamma=gamma, step_size=step_size)
 
@@ -181,7 +184,7 @@ def main():
             scheduler_update_every_step=False,
             metrics=[],
             use_checkpoint='latest',
-            eval_interval=10)
+            eval_interval=epochs)
     trainer.train(train_dataloader, val_dataloader, epochs)
 
 if __name__ == "__main__":

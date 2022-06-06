@@ -54,7 +54,6 @@ def main():
 
     poses = np.stack(scene.poses)
     T, aabb, pc = get_bounding_box(scene, poses)
-    import ipdb; ipdb.set_trace()
 
     if flags.visualize:
         from stray.debugger import VisualDebugger

@@ -48,7 +48,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self._load_images()
         self._compute_rays()
         self.error_map = None
-        self.sample_chunk_size = 64
+        self.sample_chunk_size = 32
         self.semantic_image_indices = np.array([])
 
     def __iter__(self):
@@ -146,6 +146,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.semantics = np.stack(semantics)
         self.poses = np.stack(cameras, axis=0)
         self._update_semantic_indices()
+        self._compute_class_distribution()
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
         self.h = self.camera.size[1]
@@ -192,8 +193,28 @@ class SceneDataset(torch.utils.data.IterableDataset):
             image = np.asarray(image.resize(self.camera.size, Image.NEAREST))
             self.semantics[image_index, :] = image.reshape(self.resolution)
             self._update_semantic_indices()
+            self._compute_class_distribution()
         else:
             print(f"Could not find image {semantic_path}")
+
+    def _compute_class_distribution(self):
+        classes = np.unique(self.semantics)
+        if len(classes) == 1:
+            distribution = np.ones(2) * 0.5
+        else:
+            n_classes = np.max(classes)
+            counts = np.zeros(n_classes)
+            for class_id in classes:
+                if class_id == 0:
+                    continue
+                counts[class_id-1] = (self.semantics == class_id).sum()
+
+            distribution = counts / counts.sum() + 1e-10
+        print("class distribution: ", distribution)
+        self.class_distribution = distribution
+        weights = (1.0 / distribution)
+        self.class_weights = weights / weights.sum() * weights.size
+        print("class weights: ", self.class_weights)
 
     def _update_semantic_indices(self):
         indices = []
