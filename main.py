@@ -10,25 +10,22 @@ from PyQt5 import QtWidgets, QtCore, QtGui, Qt
 from train import TrainingLoop
 from torch import multiprocessing
 from torch.multiprocessing import Process
+from constants import COLORS
 import signal
 
-COLORS = np.array([
-    [52, 137, 235],
-    [235, 229, 52]
-], dtype=np.uint8)
 ALPHA = 175
 QT_COLORS = [QtGui.QColor(c[0], c[1], c[2], ALPHA) for c in COLORS]
 NUM_KEYS = [
     QtCore.Qt.Key_0,
     QtCore.Qt.Key_1
 ]
-INFERENCE_UPDATE_INTERVAL = 2500
+INFERENCE_UPDATE_INTERVAL = 5000
 
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
     parser.add_argument('--batch-size', type=int, default=4096)
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--lr', type=float, default=1e-3)
     return parser.parse_args()
 
 def training_loop(flags, connection):

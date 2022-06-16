@@ -7,6 +7,7 @@ import time
 from tqdm import tqdm
 import numpy as np
 from datetime import datetime
+import tensorboardX
 
 import cv2
 
@@ -22,6 +23,21 @@ DEPTH_EPSILON = 0.01
 class SimpleTrainer(Trainer):
     depth_weight = 0.05
     semantic_weight = 0.25
+
+    def train(self, dataloader, epochs):
+        if self.use_tensorboardX and self.local_rank == 0:
+            self.writer = tensorboardX.SummaryWriter(os.path.join(self.workspace, "run", self.name))
+
+        if self.model.cuda_ray:
+            self.model.mark_untrained_grid(dataloader._data.poses, dataloader._data.intrinsics)
+
+        for i in range(0, epochs):
+            self.epoch += 1
+            self.train_one_epoch(dataloader)
+
+        if self.use_tensorboardX and self.local_rank == 0:
+            self.writer.close()
+
     def train_step(self, data, class_weights=None):
         rays_o = data['rays_o'].to(self.device) # [B, 3]
         rays_d = data['rays_d'].to(self.device) # [B, 3]
@@ -80,9 +96,12 @@ class SimpleTrainer(Trainer):
 
 class InteractiveTrainer(SimpleTrainer):
     def __init__(self, *args, **kwargs):
+        lr_scheduler = kwargs['lr_scheduler']
+        kwargs['lr_scheduler'] = None
         super().__init__(*args, **kwargs)
         self.loader = None
         self.class_weights = None
+        self.lr_scheduler = lr_scheduler(self.optimizer)
 
     def init(self, loader):
         self.class_weights = torch.tensor(loader._data.class_weights, device=self.device).to(torch.float32)

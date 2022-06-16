@@ -32,7 +32,7 @@ class LazyImageLoader:
         return [len(self)]
 
 class SceneDataset(torch.utils.data.IterableDataset):
-    semantic_image_sample_ratio = 0.75
+    semantic_image_sample_ratio = 0.5
     def __init__(self, split, scene, factor=4.0, batch_size=4096, lazy=False):
         self.lazy = lazy
         self.split = split
@@ -41,15 +41,17 @@ class SceneDataset(torch.utils.data.IterableDataset):
         camera = self.scene.camera()
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
-        self.indices = np.arange(0, len(self.scene))
+        image_count = len(self.scene)
+        self.indices = np.arange(0, image_count)
         self.resolution = small_size[0] * small_size[1]
         self.camera = self.scene.camera().scale(small_size)
         self.intrinsics = np.array([self.camera.camera_matrix[0, 0], self.camera.camera_matrix[1, 1], self.camera.camera_matrix[0, 2], self.camera.camera_matrix[1, 2]])
+        self.images_with_semantics = np.array([])
+        self.semantic_indices = {}
         self._load_images()
         self._compute_rays()
         self.error_map = None
         self.sample_chunk_size = 32
-        self.semantic_image_indices = np.array([])
 
     def __iter__(self):
         if self.split == "train":
@@ -70,13 +72,15 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
         sampled_indices = np.random.randint(0, self.resolution, (batch_size,))
         for chunk in range(chunks):
-            if self.semantic_image_indices.size > 0 and random.random() < self.semantic_image_sample_ratio:
-                image_index = np.random.choice(self.semantic_image_indices)
+            if self.images_with_semantics.size > 0 and random.random() < self.semantic_image_sample_ratio:
+                image_index = np.random.choice(self.images_with_semantics)
+                indices = self.semantic_indices[image_index]
+                ray_indices = np.random.choice(indices, self.sample_chunk_size)
             else:
                 image_index = np.random.randint(0, self.n_examples)
+                ray_indices = np.random.randint(0, self.resolution, (self.sample_chunk_size,))
             start = chunk * self.sample_chunk_size
             end = (chunk+1) * self.sample_chunk_size
-            ray_indices = sampled_indices[start:end]
 
             pixels[start:end] = self.images[image_index][ray_indices]
             depths[start:end] = self.depths[image_index][ray_indices] / 1000.0
@@ -219,8 +223,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
     def _update_semantic_indices(self):
         indices = []
         for i, semantic in enumerate(self.semantics):
-            if np.any(semantic > 0):
+            positive = semantic > 0
+            if np.any(positive):
                 indices.append(i)
-        self.semantic_image_indices = np.array(indices)
+                self.semantic_indices[i] = np.argwhere(positive.ravel()).ravel()
+        self.images_with_semantics = np.array(indices)
 
 

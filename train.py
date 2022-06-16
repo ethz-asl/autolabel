@@ -16,6 +16,7 @@ from stray.scene import Scene
 from torch_ngp.nerf.network_ff import NeRFNetwork
 from dataset import SceneDataset
 from trainer import SimpleTrainer, InteractiveTrainer
+from evaluation import Evaluator
 
 def read_args():
     parser = argparse.ArgumentParser()
@@ -146,10 +147,9 @@ class TrainingLoop:
 def main():
     flags = read_args()
 
-    train_dataset = SceneDataset('train', flags.scene, factor=flags.factor_train, batch_size=flags.batch_size)
-    val_dataset = SceneDataset('test', flags.scene, factor=flags.factor_test)
+    dataset = SceneDataset('train', flags.scene, factor=flags.factor_train, batch_size=flags.batch_size)
 
-    model = create_model(train_dataset)
+    model = create_model(dataset)
 
     opt = Namespace(rand_pose=-1)
 
@@ -158,11 +158,9 @@ def main():
         {'name': 'net', 'params': list(model.sigma_net.parameters()) + list(model.color_net.parameters()), 'weight_decay': 1e-6},
     ], lr=flags.lr, betas=(0.9, 0.99), eps=1e-15)
 
-    train_dataloader = torch.utils.data.DataLoader(LenDataset(train_dataset, 1000),
+    train_dataloader = torch.utils.data.DataLoader(LenDataset(dataset, 1000),
             batch_size=None, num_workers=flags.workers)
-    train_dataloader._data = train_dataset
-    val_dataloader = torch.utils.data.DataLoader(LenDataset(val_dataset, len(val_dataset.images)), batch_size=None)
-    val_dataloader._data = val_dataset
+    train_dataloader._data = dataset
 
     criterion = torch.nn.MSELoss(reduction='none')
     min_lr = 1e-7
@@ -185,7 +183,25 @@ def main():
             metrics=[],
             use_checkpoint='latest',
             eval_interval=epochs)
-    trainer.train(train_dataloader, val_dataloader, epochs)
+    trainer.train(train_dataloader, epochs)
+    trainer.save_checkpoint(best=True)
+
+    classes = [f"Class {i}" for i in range(dataset.class_weights.size)]
+    classes[0] = 'Background'
+    evaluator = Evaluator(model, classes)
+    test_dataset = SceneDataset('test', flags.scene, factor=flags.factor_test, batch_size=flags.batch_size)
+    ious = evaluator.eval(test_dataset, visualize=True)
+
+    from rich.table import Table
+    from rich.console import Console
+    table = Table()
+    table.add_column('Class')
+    table.add_column('mIoU')
+    for class_index, miou in ious.items():
+        table.add_row(str(class_index), f"{miou:.3f}")
+    console = Console()
+    console.print(table)
+
 
 if __name__ == "__main__":
     main()
