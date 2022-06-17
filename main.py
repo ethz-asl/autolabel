@@ -7,7 +7,7 @@ from PIL import Image
 from PIL.ImageQt import ImageQt, fromqimage
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
-from train import TrainingLoop
+from backend import TrainingLoop
 from torch import multiprocessing
 from torch.multiprocessing import Process
 from constants import COLORS
