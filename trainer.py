@@ -32,8 +32,8 @@ class SimpleTrainer(Trainer):
             self.model.mark_untrained_grid(dataloader._data.poses, dataloader._data.intrinsics)
 
         for i in range(0, epochs):
-            self.epoch += 1
             self.train_one_epoch(dataloader)
+            self.epoch += 1
 
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer.close()
@@ -122,7 +122,7 @@ class InteractiveTrainer(SimpleTrainer):
             data = next(iterator)
             self.optimizer.zero_grad()
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                _, _, loss = self.train_step(data)
+                _, _, loss = self.train_step(data, class_weights=self.class_weights)
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()

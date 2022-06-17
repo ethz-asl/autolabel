@@ -27,6 +27,7 @@ def read_args():
     parser.add_argument('--lr', type=float, default=1e-2)
     parser.add_argument('--iters', type=int, default=20000)
     parser.add_argument('--workers', '-w', type=int, default=1)
+    parser.add_argument('--vis', action='store_true')
     return parser.parse_args()
 
 def create_model(dataset):
@@ -77,7 +78,7 @@ class TrainingLoop:
         criterion = torch.nn.MSELoss(reduction='none')
         scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(optimizer, factor=1.0)
 
-        opt = Namespace(rand_pose=-1)
+        opt = Namespace(rand_pose=-1, color_space='srgb')
         self.trainer = InteractiveTrainer('ngp', opt, self.model,
                 device=self.device,
                 workspace=self.workspace,
@@ -151,7 +152,7 @@ def main():
 
     model = create_model(dataset)
 
-    opt = Namespace(rand_pose=-1)
+    opt = Namespace(rand_pose=-1, color_space='srgb')
 
     optimizer = lambda model: torch.optim.Adam([
         {'name': 'encoding', 'params': list(model.encoder.parameters())},
@@ -181,16 +182,21 @@ def main():
             lr_scheduler=scheduler,
             scheduler_update_every_step=False,
             metrics=[],
-            use_checkpoint='latest',
-            eval_interval=epochs)
+            use_checkpoint='latest')
     trainer.train(train_dataloader, epochs)
-    trainer.save_checkpoint(best=True)
+    trainer.save_checkpoint()
+
+    test_dataset = SceneDataset('test', flags.scene, factor=flags.factor_test, batch_size=flags.batch_size)
+    test_dataloader = torch.utils.data.DataLoader(LenDataset(test_dataset, test_dataset.poses.shape[0]),
+            batch_size=None, num_workers=flags.workers)
+    test_dataloader._data = test_dataset
+    trainer.evaluate(test_dataloader)
+
 
     classes = [f"Class {i}" for i in range(dataset.class_weights.size)]
     classes[0] = 'Background'
     evaluator = Evaluator(model, classes)
-    test_dataset = SceneDataset('test', flags.scene, factor=flags.factor_test, batch_size=flags.batch_size)
-    ious = evaluator.eval(test_dataset, visualize=True)
+    ious = evaluator.eval(test_dataset, visualize=flags.vis)
 
     from rich.table import Table
     from rich.console import Console
