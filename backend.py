@@ -14,9 +14,7 @@ class TrainingLoop:
         self.workspace = os.path.join(scene, 'nerf')
         self.train_dataset = SceneDataset('train', scene, factor=4.0,
                 batch_size=flags.batch_size)
-        print("Created train dataset")
         self.model = create_model(self.train_dataset)
-        print("Created model")
         self.optimizer = lambda model: torch.optim.Adam([
             {'name': 'encoding', 'params': list(model.encoder.parameters())},
             {'name': 'net', 'params': list(model.sigma_net.parameters()) + list(model.color_net.parameters()), 'weight_decay': 1e-6},
@@ -42,7 +40,6 @@ class TrainingLoop:
                 lr_scheduler=scheduler,
                 metrics=[],
                 use_checkpoint='latest')
-        print("Initialized trainer")
 
     def _create_dataloader(self, dataset):
         loader = torch.utils.data.DataLoader(dataset,
@@ -83,7 +80,7 @@ class TrainingLoop:
                 _, _, p_semantic = self.trainer.test_step(data)
         self.model.train()
         image = p_semantic[0].argmax(dim=-1).detach().cpu()
-        print(f"Sending {image_index}")
+        self.log(f"Sending {image_index}")
         self.connection.send((image_index, image))
 
     def _update_image(self, image_index):
@@ -94,6 +91,9 @@ class TrainingLoop:
         data['rays_o'] = torch.tensor(data['rays_o'], device=self.device).to(dtype)
         data['rays_d'] = torch.tensor(data['rays_d'], device=self.device).to(dtype)
         return data
+
+    def log(self, message):
+        print(message)
 
     def shutdown(self, *args):
         self.done = True
