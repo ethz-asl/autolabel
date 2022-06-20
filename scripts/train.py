@@ -11,10 +11,10 @@ import cv2
 import numpy as np
 import torch
 from torch import optim
-from stray.scene import Scene
-from dataset import SceneDataset
-from trainer import SimpleTrainer
-from evaluation import Evaluator
+from autolabel.dataset import SceneDataset
+from autolabel.trainer import SimpleTrainer
+from autolabel.evaluation import Evaluator
+from autolabel import utils
 
 def read_args():
     parser = argparse.ArgumentParser()
@@ -46,7 +46,7 @@ def main():
 
     dataset = SceneDataset('train', flags.scene, factor=flags.factor_train, batch_size=flags.batch_size)
 
-    model = create_model(dataset)
+    model = utils.create_model(dataset)
 
     opt = Namespace(rand_pose=-1, color_space='srgb')
 

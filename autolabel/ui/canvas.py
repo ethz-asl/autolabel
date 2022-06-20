@@ -3,7 +3,7 @@ from PIL import Image
 from PIL.ImageQt import ImageQt
 from PyQt5.QtWidgets import QWidget
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
-from constants import COLORS
+from autolabel.constants import COLORS
 
 ALPHA = 175
 QT_COLORS = [QtGui.QColor(c[0], c[1], c[2], ALPHA) for c in COLORS]

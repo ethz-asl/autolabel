@@ -4,9 +4,9 @@ import numpy as np
 from argparse import Namespace
 from PIL import Image
 from torch import optim
-from trainer import SimpleTrainer, InteractiveTrainer
-from dataset import SceneDataset
-from utils import create_model
+from autolabel.trainer import SimpleTrainer, InteractiveTrainer
+from autolabel.dataset import SceneDataset
+from autolabel.utils import create_model
 
 class TrainingLoop:
     def __init__(self, scene, flags, connection):

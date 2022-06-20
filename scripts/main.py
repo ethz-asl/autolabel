@@ -7,13 +7,12 @@ from PIL import Image
 from PIL.ImageQt import ImageQt, fromqimage
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
-from backend import TrainingLoop
 from torch import multiprocessing
 from torch.multiprocessing import Process
-from constants import COLORS
-from rich.live import Live
-from ui.canvas import Canvas, ALPHA
 import signal
+from autolabel.backend import TrainingLoop
+from autolabel.constants import COLORS
+from autolabel.ui.canvas import Canvas, ALPHA
 
 NUM_KEYS = [
     QtCore.Qt.Key_0,

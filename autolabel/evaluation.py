@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from constants import COLORS
+from autolabel.constants import COLORS
 from rich.progress import track
 
 def compute_iou(mask, gt_mask):
