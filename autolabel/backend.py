@@ -77,11 +77,16 @@ class TrainingLoop:
         with torch.no_grad():
             data = self._to_tensor(self.train_dataset._get_test(image_index))
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                _, _, p_semantic = self.trainer.test_step(data)
+                p_rgb, p_depth, p_semantic = self.trainer.test_step(data)
         self.model.train()
-        image = p_semantic[0].argmax(dim=-1).detach().cpu()
+        semantic = p_semantic[0].argmax(dim=-1).detach().cpu()
         self.log(f"Sending {image_index}")
-        self.connection.send((image_index, image))
+        self.connection.send(("image", {
+            'image_index': image_index,
+            'rgb': p_rgb[0].detach().cpu(),
+            'depth': p_depth[0].detach().cpu(),
+            'semantic': semantic
+        }))
 
     def _update_image(self, image_index):
         self.train_dataset.semantic_map_updated(image_index)

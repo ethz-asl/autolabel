@@ -3,7 +3,7 @@ import os
 import random
 import numpy as np
 from PIL import Image
-from PIL.ImageQt import ImageQt, fromqimage
+from PIL.ImageQt import fromqimage, ImageQt
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
 from torch import multiprocessing
@@ -13,6 +13,7 @@ from autolabel.utils import Scene
 from autolabel.backend import TrainingLoop
 from autolabel.constants import COLORS
 from autolabel.ui.canvas import Canvas, ALPHA
+from matplotlib import cm
 
 NUM_KEYS = [
     QtCore.Qt.Key_0,
@@ -45,6 +46,55 @@ class MessageBus:
         with self.lock:
             self.connection.send(('update_image', image_index))
 
+class ImagesView(QtWidgets.QGridLayout):
+    def __init__(self, canvas, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        image_size = (int(canvas.canvas_width / 2), int(canvas.canvas_height / 2))
+        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        size_policy.setHeightForWidth(True)
+        size_policy.setWidthForHeight(True)
+        small_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+        small_policy.setWidthForHeight(True)
+        small_policy.setHeightForWidth(True)
+
+        self.canvas = canvas
+        self.canvas.setSizePolicy(size_policy)
+        self.rgb_view = QtWidgets.QLabel()
+        self.depth_view = QtWidgets.QLabel()
+        self.rgb_view.setScaledContents(True)
+        self.depth_view.setScaledContents(True)
+        self.rgb_view.setSizePolicy(small_policy)
+        self.depth_view.setSizePolicy(small_policy)
+        self.depth = QtGui.QPixmap(image_size[0], image_size[1])
+        self.color = QtGui.QPixmap(image_size[0], image_size[1])
+        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
+        self.color.fill(QtGui.QColor(0, 0, 0, 255))
+        self.depth_view.setPixmap(self.depth)
+        self.rgb_view.setPixmap(self.color)
+
+        self.addWidget(canvas, 0, 0, 2, 1)
+        self.addWidget(self.rgb_view, 0, 1)
+        self.addWidget(self.depth_view, 1, 1)
+
+    def set_color(self, nparray):
+        qimage = ImageQt(Image.fromarray((nparray * 255).astype(np.uint8)))
+        self.color = QtGui.QPixmap.fromImage(qimage)
+
+    def set_depth(self, nparray):
+        normalized_depth = 1.0 - np.clip(nparray, 0.0, 10.0) / 10.0
+        qimage = ImageQt(Image.fromarray((cm.inferno(normalized_depth) * 255).astype(np.uint8)))
+        self.depth = QtGui.QPixmap.fromImage(qimage)
+
+    def reset(self):
+        self.color.fill(QtGui.QColor(0, 0, 0, 255))
+        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
+        self.update_images()
+
+    def update_images(self):
+        self.rgb_view.setPixmap(self.color)
+        self.depth_view.setPixmap(self.depth)
+
+
 class SceneViewer(QWidget):
     def __init__(self, flags):
         super().__init__()
@@ -69,8 +119,9 @@ class SceneViewer(QWidget):
         self.bottom_bar.addWidget(self.slider)
         self.bottom_bar.addWidget(self.class_label)
 
+        self.images_view = ImagesView(self.canvas)
         self.layout = QtWidgets.QVBoxLayout()
-        self.layout.addWidget(self.canvas)
+        self.layout.addLayout(self.images_view)
         self.layout.addLayout(self.bottom_bar)
         self.setLayout(self.layout)
 
@@ -102,9 +153,17 @@ class SceneViewer(QWidget):
 
     def _update_image(self):
         if self.connection.poll():
-            image_index, image = self.connection.recv()
-            if image_index == self.current_image_index:
-                self.canvas.set_inferred(image.numpy())
+            message_type, payload = self.connection.recv()
+            if message_type == 'image':
+                self._new_image_cb(payload)
+
+    def _new_image_cb(self, payload):
+        if payload['image_index'] != self.current_image_index:
+            return
+        self.canvas.set_inferred(payload['semantic'].numpy())
+        self.images_view.set_depth(payload['depth'].numpy())
+        self.images_view.set_color(payload['rgb'].numpy())
+        self.images_view.update_images()
 
     def _canvas_callback(self):
         # Called when the mouse button is lifted on the canvas.
@@ -129,6 +188,7 @@ class SceneViewer(QWidget):
             self._drawings[index] = drawing
         image = self._image_cache[index]
         self.canvas.set_image(image, drawing)
+        self.images_view.reset()
         self._request_image()
         self.timer.start(INFERENCE_UPDATE_INTERVAL)
 

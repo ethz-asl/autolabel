@@ -16,9 +16,11 @@ class Canvas(QWidget):
         self.brush_size = 5
         self.active = False
 
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.g_view = QtWidgets.QGraphicsView(self)
         self.g_view.setSceneRect(0, 0, self.canvas_width, self.canvas_height)
+        self.g_view.setBackgroundBrush(
+                QtGui.QBrush(QtGui.QColor(52, 52, 52), QtCore.Qt.SolidPattern)
+        )
         self.g_scene = QtWidgets.QGraphicsScene(0, 0, width, height)
         self.g_view.setScene(self.g_scene)
         self.g_view.mousePressEvent = self._mouse_down
