@@ -6,14 +6,13 @@ import queue
 import cv2
 import numpy as np
 import open3d as o3d
-from stray.scene import Scene
+from autolabel import utils
+from autolabel.utils import Scene
 from scipy.spatial.transform import Rotation
-from stray import linalg
 
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
-    parser.add_argument('--visualize', '-v', action='store_true', help="Visualize for debugging.")
     return parser.parse_args()
 
 def get_bounding_box(scene, poses):
@@ -22,16 +21,16 @@ def get_bounding_box(scene, poses):
     min_bounds = np.zeros(3)
     max_bounds = np.zeros(3)
     pc = o3d.geometry.PointCloud()
-    depth_frame = o3d.io.read_image(scene.get_depth_filepaths()[0])
+    depth_frame = o3d.io.read_image(scene.depth_paths()[0])
     depth_size = np.asarray(depth_frame).shape[::-1]
-    K = scene.camera().scale(depth_size).camera_matrix
+    K = scene.camera.scale(depth_size).camera_matrix
     intrinsics = o3d.camera.PinholeCameraIntrinsic(int(depth_size[0]), int(depth_size[1]), K[0, 0], K[1, 1], K[0, 2], K[1, 2])
     pc = o3d.geometry.PointCloud()
-    for T_WC, depth in zip(scene.poses, scene.get_depth_filepaths()):
+    for T_WC, depth in zip(scene.poses, scene.depth_paths()):
         depth = o3d.io.read_image(depth)
         pc_C = o3d.geometry.PointCloud.create_from_depth_image(depth, depth_scale=1000.0, intrinsic=intrinsics)
         pc_C = np.asarray(pc_C.points)
-        pc_W = linalg.transform_points(T_WC, pc_C)
+        pc_W = utils.transform_points(T_WC, pc_C)
         min_bounds = np.minimum(min_bounds, pc_W.min(axis=0))
         max_bounds = np.maximum(max_bounds, pc_W.max(axis=0))
         pc += o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pc_W)).uniform_down_sample(50)
@@ -54,18 +53,6 @@ def main():
 
     poses = np.stack(scene.poses)
     T, aabb, pc = get_bounding_box(scene, poses)
-
-    if flags.visualize:
-        from stray.debugger import VisualDebugger
-        poses = [T @ T_WC for T_WC in scene.poses]
-        debugger = VisualDebugger()
-        for T_WC in poses:
-            debugger.add_frame(T_WC)
-        debugger.add_mesh(pc.transform(T))
-        debugger.add_frame(np.eye(4), scale=0.5)
-
-        debugger.show()
-
 
     metadata = {
         'transform': T,

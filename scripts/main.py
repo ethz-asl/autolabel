@@ -2,7 +2,6 @@ import argparse
 import os
 import random
 import numpy as np
-from stray.scene import Scene
 from PIL import Image
 from PIL.ImageQt import ImageQt, fromqimage
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
@@ -10,6 +9,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui, Qt
 from torch import multiprocessing
 from torch.multiprocessing import Process
 import signal
+from autolabel.utils import Scene
 from autolabel.backend import TrainingLoop
 from autolabel.constants import COLORS
 from autolabel.ui.canvas import Canvas, ALPHA
@@ -59,7 +59,7 @@ class SceneViewer(QWidget):
         self.slider.setMaximum(len(self.scene) - 1)
         self.slider.valueChanged.connect(self._slider_value_change)
 
-        size = self.scene.camera().size
+        size = self.scene.camera.size
         width = 720
         image_height = width / size[0] * size[1]
         self.canvas = Canvas(width, image_height, self._canvas_callback)
@@ -119,7 +119,7 @@ class SceneViewer(QWidget):
         self.current_image_index = index
         pixmap = self._image_cache.get(index, None)
         if pixmap is None:
-            images = self.scene.get_image_filepaths()
+            images = self.scene.rgb_paths()
             self._image_cache[index] = Image.open(images[index])
 
         drawing = self._drawings.get(index, None)
@@ -149,7 +149,7 @@ class SceneViewer(QWidget):
             self._save_image(image_index)
 
     def _save_image(self, image_index):
-        semantic_dir = os.path.join(self.scene.scene_path, 'semantic')
+        semantic_dir = os.path.join(self.scene.path, 'semantic')
         os.makedirs(semantic_dir, exist_ok=True)
         drawing = self._drawings[image_index]
         array = np.asarray(fromqimage(drawing.toImage()))[:, :, :3]
@@ -165,7 +165,7 @@ class SceneViewer(QWidget):
         Image.fromarray(out_map).save(path)
 
     def load(self):
-        semantic_dir = os.path.join(self.scene.scene_path, 'semantic')
+        semantic_dir = os.path.join(self.scene.path, 'semantic')
         if not os.path.exists(semantic_dir):
             return
         images = os.listdir(semantic_dir)

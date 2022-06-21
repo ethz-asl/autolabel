@@ -5,8 +5,7 @@ import torch
 import pickle
 import random
 from PIL import Image
-from stray.scene import Scene
-from stray import linalg
+from autolabel.utils import Scene
 from torch_ngp.nerf.provider import nerf_matrix_to_ngp
 
 CV_TO_OPENGL = np.array([[1.0, 0.0, 0.0, 0.0],
@@ -38,13 +37,13 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.split = split
         self.batch_size = batch_size
         self.scene = Scene(scene)
-        camera = self.scene.camera()
+        camera = self.scene.camera
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
         image_count = len(self.scene)
         self.indices = np.arange(0, image_count)
         self.resolution = small_size[0] * small_size[1]
-        self.camera = self.scene.camera().scale(small_size)
+        self.camera = self.scene.camera.scale(small_size)
         self.intrinsics = np.array([self.camera.camera_matrix[0, 0], self.camera.camera_matrix[1, 1], self.camera.camera_matrix[0, 2], self.camera.camera_matrix[1, 2]])
         self.images_with_semantics = np.array([])
         self.semantic_indices = {}
@@ -105,14 +104,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
         semantics = []
         cameras = []
 
-        color_images = self.scene.get_image_filepaths()
-        depth_images = self.scene.get_depth_filepaths()
+        color_images = self.scene.rgb_paths()
+        depth_images = self.scene.depth_paths()
 
-        with open(os.path.join(self.scene.scene_path, 'nerf_metadata.pkl'), 'rb') as f:
-            metadata = pickle.load(f)
-
-        T_IW = metadata['transform']
-        poses = [T_IW @ T for T in self.scene.poses]
+        poses = self.scene.poses
 
         for index in self.indices:
             frame = color_images[index]
@@ -123,7 +118,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
                 image = cv2.resize(image, self.camera.size, interpolation=cv2.INTER_AREA)
                 images.append(image)
 
-            semantic_path = os.path.join(self.scene.scene_path, 'semantic', os.path.basename(depth_images[index]))
+            semantic_path = os.path.join(self.scene.path, 'semantic', os.path.basename(depth_images[index]))
             if os.path.exists(semantic_path):
                 image = Image.open(semantic_path)
                 image = image.resize(self.camera.size, Image.NEAREST)
@@ -131,7 +126,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
             else:
                 semantics.append(np.zeros(self.camera.size[::-1], dtype=np.uint8))
 
-            T_WC = poses[index] @ CV_TO_OPENGL
+            T_CW = poses[index]
+            T_WC = np.linalg.inv(T_CW) @ CV_TO_OPENGL
             T_WC = nerf_matrix_to_ngp(T_WC, scale=1.0)
             cameras.append(T_WC.astype(np.float32))
 
@@ -144,7 +140,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         else:
             self.images = np.stack(images, axis=0)
 
-        aabb = metadata['aabb']
+        aabb = self.scene.bbox()
 
         self.depths = np.stack(depths)
         self.semantics = np.stack(semantics)
@@ -191,7 +187,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.directions = directions
 
     def semantic_map_updated(self, image_index):
-        semantic_path = os.path.join(self.scene.scene_path, 'semantic', f"{image_index:06}.png")
+        semantic_path = os.path.join(self.scene.path, 'semantic', f"{image_index:06}.png")
         if os.path.exists(semantic_path):
             image = Image.open(semantic_path)
             image = np.asarray(image.resize(self.camera.size, Image.NEAREST))
