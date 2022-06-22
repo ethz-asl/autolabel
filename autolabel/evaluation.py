@@ -25,7 +25,7 @@ class Evaluator:
 
     def _process_frames(self, dataset, visualize):
         ious = {}
-        for index in track(dataset.semantic_indices, description="Rendering frames"):
+        for index in track(dataset.index_sampler.semantic_indices(), description="Rendering frames"):
             batch = dataset._get_test(index)
             pixels = torch.tensor(batch['pixels']).to(self.device)
             rays_o = torch.tensor(batch['rays_o']).to(self.device)

@@ -1,6 +1,6 @@
 # Autolabel
 
-This goal of this project is to provide accurate ground truth data for RGB-D sensor stream.
+The goal of this project is to provide accurate ground truth data for RGB-D sensor streams.
 
 ## User Interface
 
