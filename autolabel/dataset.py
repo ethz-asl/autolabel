@@ -38,7 +38,12 @@ class IndexSampler:
         # and the second is the image index. The array
         # contains indices which are labeled with that class.
         self.index = {}
+        # dict[int, array[float]]
+        # where the first int is the class id, the array
+        # contains probabilities to sample that class.
+        self.image_weights = {}
         self.has_semantics = False
+        self.image_range = np.array([])
 
     def update(self, semantic_maps):
         """
@@ -49,6 +54,8 @@ class IndexSampler:
         self.index = {}
         self.classes = np.unique(semantic_maps)
         self.classes = self.classes[self.classes != 0] # remove null class
+        class_counts = {}
+        zeros = np.zeros(len(semantic_maps))
         for i, semantic in enumerate(semantic_maps):
             for class_id in self.classes:
                 where_class = semantic == class_id
@@ -58,16 +65,30 @@ class IndexSampler:
                     image_indices[i] = np.argwhere(where_class.ravel()).ravel()
                     self.index[class_id] = image_indices
 
+                    counts = class_counts.get(class_id, zeros).copy()
+                    pixel_count = where_class.sum()
+                    counts[i] += where_class.sum()
+                    class_counts[class_id] = counts
+
+        for class_id, counts in class_counts.items():
+            total = counts.sum()
+            assert total != 0
+            class_counts[class_id] = counts / total
+        self.image_weights = class_counts
+        self.image_range = np.arange(len(semantic_maps), dtype=int)
+
     def sample_class(self):
         return np.random.choice(self.classes)
 
     def sample(self, class_id, count=1):
         """
         Samples an image and {count} pixel indices belonging to class_id in the sampled image.
+        The images are sampled proportionally to how many class_id pixels exist in each image.
         returns: tuple(sampled image index, list(sampled pixel index))
         """
         images = self.index[class_id]
-        image_index = random.choice(list(images.keys()))
+        probabilities = self.image_weights[class_id]
+        image_index = np.random.choice(self.image_range, p=probabilities)
         pixel_indices = np.random.choice(images[image_index], count)
         return image_index, pixel_indices
 
@@ -236,7 +257,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.directions = directions
 
     def semantic_map_updated(self, image_index):
-        semantic_path = os.path.join(self.scene.path, 'semantic', f"{image_index:06}.png")
+        semantic_path = os.path.join(self.scene.path, 'semantic', f"{image_index}.png")
         if os.path.exists(semantic_path):
             image = Image.open(semantic_path)
             image = np.asarray(image.resize(self.camera.size, Image.NEAREST))

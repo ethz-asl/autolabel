@@ -4,7 +4,7 @@ from autolabel.dataset import IndexSampler
 
 class SamplingTestCase(unittest.TestCase):
     def test_find_classes(self):
-        semantics = np.zeros((2, 10))
+        semantics = np.zeros((2, 10), int)
         sampler = IndexSampler()
         sampler.update(semantics)
         self.assertFalse(sampler.has_semantics)
@@ -18,7 +18,7 @@ class SamplingTestCase(unittest.TestCase):
         self.assertEqual(sampler.classes[1], 2)
 
     def test_sampling(self):
-        semantics = np.zeros((2, 10))
+        semantics = np.zeros((2, 10), int)
         semantics[0, 5] = 1
         semantics[0, 0] = 2
         semantics[1, 5] = 3
@@ -41,7 +41,7 @@ class SamplingTestCase(unittest.TestCase):
         self.assertTrue(sampler.has_semantics)
 
     def test_semantic_indices(self):
-        semantics = np.zeros((5, 10))
+        semantics = np.zeros((5, 10), int)
         semantics[0, 5] = 1
         semantics[2, 0] = 2
         semantics[4, 5] = 3
