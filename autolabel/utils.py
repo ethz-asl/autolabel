@@ -53,7 +53,7 @@ class Scene:
 
     def _read_poses(self):
         pose_files = os.listdir(self.pose_path)
-        pose_files = sorted(pose_files, key=lambda p: int(p.split('.')[0]))
+        pose_files = sorted([p for p in pose_files if p[0] != '.'], key=lambda p: int(p.split('.')[0]))
         self.poses = []
         for pose_file in pose_files:
             T_CW = np.loadtxt(os.path.join(self.pose_path, pose_file))

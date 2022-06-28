@@ -48,7 +48,6 @@ def get_bounding_box(scene, poses):
     return T, aabb, filtered
 
 def main():
-    flags = read_args()
     scene = Scene(flags.scene)
 
     poses = np.stack(scene.poses)
@@ -63,4 +62,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(read_args())

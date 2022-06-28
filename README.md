@@ -2,13 +2,13 @@
 
 This goal of this project is to provide accurate ground truth data for RGB-D sensor stream.
 
-## User Interface
+## User interface
 
 The main way to interact with this project is through the graphical user interface.
 
 Run the user interface with `python scripts/gui.py <scene>`
 
-## Scene Directory Structure
+## Scene directory structure
 
 The scene directory structure is as follows:
 ```
@@ -32,7 +32,19 @@ bbox.txt        # 6 values denoting the bounds of the scene (min_x, min_y, min_z
 nerf/           # Contains NeRF checkpoints and training metadata.
 ```
 
-## Pretraining on a Scene
+## Computing camera poses
+
+The script [`script/mapping.py`](script/mapping.py) defines a mapping pipeline which will compute camera poses for your scene. The required input files are:
+- `rgb/` images
+- `depth/` frames
+- `intrinsics.txt` camera intrinsic parameters
+
+The computed outputs are:
+- `pose/` camera poses for each frame
+- `bbox.txt` scene bounds
+
+
+## Pretraining on a scene
 
 To fit the representation to the scene without the user interface, you can run `scripts/train.py`. Checkpoints and metadata data will be stored in the scene folder under the `nerf` directory.
 
@@ -45,6 +57,8 @@ conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
 
 Install into your desired python environment with the following commands:
 ```
+pip install pycolmap git+https://github.com/cvg/Hierarchical-Localization.git
+
 git submodule update --init --recursive
 pushd torch_ngp
 pip install -e .
