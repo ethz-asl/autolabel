@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from tqdm import tqdm
 from autolabel.constants import COLORS
 from rich.progress import track
 
@@ -8,6 +9,8 @@ def compute_iou(p_semantic, gt_semantic, class_index):
     gt_semantic = gt_semantic == class_index
     intersection = np.bitwise_and(p_semantic, gt_semantic).sum()
     union = np.bitwise_or(p_semantic, gt_semantic).sum()
+    if union == 0:
+        return 0.0
     return float(intersection) / float(union)
 
 class Evaluator:
@@ -25,7 +28,7 @@ class Evaluator:
     def _process_frames(self, dataset, visualize):
         ious = {}
         gt_masks = dataset.scene.gt_masks(dataset.camera.size)
-        for index, gt_semantic in gt_masks:
+        for index, gt_semantic in tqdm(gt_masks, desc="Rendering frames"):
             batch = dataset._get_test(index)
             pixels = torch.tensor(batch['pixels']).to(self.device)
             rays_o = torch.tensor(batch['rays_o']).to(self.device)

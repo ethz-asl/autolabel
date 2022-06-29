@@ -24,9 +24,12 @@ pose/
   0.txt         # 4 x 4 world to camera transform.
   1.txt
   ...
-semantic/       # Ground truth semantic annotations provided by user.
+semantic/       # Ground truth sparse semantic annotations provided by user.
   10.png        # These might not exist.
   150.png
+gt_masks/       # Optional
+  10.json       # Dense ground truth masks used for evaluation.
+  150.json      # Used e.g. by scripts/evaluate.py
 intrinsics.txt  # 4 x 4 camera matrix.
 bbox.txt        # 6 values denoting the bounds of the scene (min_x, min_y, min_z, max_x, max_y, max_z).
 nerf/           # Contains NeRF checkpoints and training metadata.
@@ -51,6 +54,19 @@ pip install -e .
 bash scripts/install_ext.sh
 popd
 pip install -e .
+```
+
+## Evaluating against ground truth frames
+
+We use [labelme](https://github.com/wkentaro/labelme) to annotate ground truth frames. To annotate frames, run:
+```
+labelme rgb --nodata --autosave --output gt_masks
+```
+inside a scene directory, to annotate the frames in the `rgb` folder. Corresponding annotations will be saved into the `gt_masks` folder. You don't need to annotate every single frame, but can sample just a few.
+
+To compute the intersection-over-union agreement against the manually annotated frames, run:
+```
+python scripts/evaluate.pt <scene1> <scene2> # ...
 ```
 
 
