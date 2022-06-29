@@ -15,7 +15,7 @@ from hloc.utils import viz_3d
 
 def read_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('scene', help="Scene to infer poses of.")
+    parser.add_argument('scene', help="Scene to infer poses for.")
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--vis', action='store_true')
     return parser.parse_args()
@@ -24,7 +24,7 @@ class HLoc:
     def __init__(self, tmp_dir, scene, flags):
         self.flags = flags
         self.scene = scene
-        self.exhaustive = True
+        self.exhaustive = len(scene) < 250
 
         self.tmp_dir = Path(tmp_dir)
         self.sfm_pairs = self.tmp_dir / 'sfm-pairs.txt'
