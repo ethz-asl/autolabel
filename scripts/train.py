@@ -1,4 +1,3 @@
-import json
 import os
 import math
 import argparse
@@ -11,10 +10,10 @@ import cv2
 import numpy as np
 import torch
 from torch import optim
-from autolabel.dataset import SceneDataset
+from autolabel.dataset import SceneDataset, LenDataset
 from autolabel.trainer import SimpleTrainer
 from autolabel.evaluation import Evaluator
-from autolabel import utils
+from autolabel import model_utils
 
 def read_args():
     parser = argparse.ArgumentParser()
@@ -23,30 +22,17 @@ def read_args():
     parser.add_argument('--factor-test', type=float, default=4.0)
     parser.add_argument('--batch-size', '-b', type=int, default=4096)
     parser.add_argument('--lr', type=float, default=1e-2)
-    parser.add_argument('--iters', type=int, default=20000)
+    parser.add_argument('--iters', type=int, default=10000)
     parser.add_argument('--workers', '-w', type=int, default=1)
     parser.add_argument('--vis', action='store_true')
     return parser.parse_args()
-
-class LenDataset(torch.utils.data.IterableDataset):
-    def __init__(self, dataset, length):
-        self.dataset = dataset
-        self.length = length
-
-    def __iter__(self):
-        iterator = iter(self.dataset)
-        for _ in range(self.length):
-            yield next(iterator)
-
-    def __len__(self):
-        return self.length
 
 def main():
     flags = read_args()
 
     dataset = SceneDataset('train', flags.scene, factor=flags.factor_train, batch_size=flags.batch_size)
 
-    model = utils.create_model(dataset)
+    model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds)
 
     opt = Namespace(rand_pose=-1, color_space='srgb')
 

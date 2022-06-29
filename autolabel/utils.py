@@ -79,22 +79,39 @@ class Scene:
         return [os.path.join(self.depth_path, d) for d in depth_frames]
 
     def bbox(self):
-        return np.loadtxt(os.path.join(self.path, 'bbox.txt'))[:6]
+        return np.loadtxt(os.path.join(self.path, 'bbox.txt'))[:6].reshape(2, 3)
+
+    def gt_masks(self, size):
+        """
+        Returns a list of numpy arrays of ground truth segmentation masks,
+        if available. Returns an empty list if no masks have been annotated.
+        size: the desired size for the masks.
+        returns: list of H x W numpy arrays
+        """
+        gt_masks_dir = os.path.join(self.path, 'gt_masks')
+        if not os.path.exists(gt_masks_dir):
+            return []
+        masks = []
+        mask_files = [os.path.join(gt_masks_dir, f) for f in os.listdir(gt_masks_dir)]
+        for mask_file in mask_files:
+            frame_number = int(os.path.basename(mask_file).split('.')[0])
+            mask = _read_gt_mask(mask_file, size)
+            masks.append((frame_number, _read_gt_mask(mask_file, size)))
+        return sorted(masks, key=lambda x: x[0])
 
 def transform_points(T, points):
     R = T[:3, :3]
     t = T[:3, 3]
     return (R @ points[..., :, None])[..., :, 0] + t
 
-def create_model(dataset):
-    extents = dataset.max_bounds - dataset.min_bounds
-    bound = (extents - (dataset.min_bounds + dataset.max_bounds) * 0.5).max()
-    return NeRFNetwork(num_layers=2, num_layers_color=2,
-            hidden_dim_color=64,
-            hidden_dim=64,
-            geo_feat_dim=15,
-            encoding="hashgrid",
-            bound=float(bound),
-            cuda_ray=False,
-            density_scale=1)
+def _read_gt_mask(path, size):
+    image = np.zeros((size[1], size[0]), dtype=np.uint8)
+    with open(path, 'rt') as f:
+        data = json.load(f)
+    scaling_factor = np.array([size[0] / data['imageWidth'], size[1] / data['imageHeight']])
+    for shape in data['shapes']:
+        polygon = (np.stack(shape['points']) * scaling_factor).astype(np.int32)
+        #TODO: handle multiple classes.
+        image = cv2.fillPoly(image, polygon[None], 1)
+    return image
 

@@ -46,6 +46,9 @@ class MessageBus:
         with self.lock:
             self.connection.send(('update_image', image_index))
 
+    def save_checkpoint(self):
+        self.connection.send(('checkpoint', None))
+
 class ImagesView(QtWidgets.QGridLayout):
     def __init__(self, canvas, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -207,6 +210,7 @@ class SceneViewer(QWidget):
     def save(self):
         for image_index in self._drawings.keys():
             self._save_image(image_index)
+        self.message_bus.save_checkpoint()
 
     def _save_image(self, image_index):
         semantic_dir = os.path.join(self.scene.path, 'semantic')

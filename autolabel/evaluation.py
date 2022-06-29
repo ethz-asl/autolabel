@@ -3,12 +3,11 @@ import numpy as np
 from autolabel.constants import COLORS
 from rich.progress import track
 
-def compute_iou(mask, gt_mask):
-    assert mask.shape == gt_mask.shape
-    mask = mask > 0
-    gt_mask = gt_mask > 0
-    intersection = np.bitwise_and(mask, gt_mask).sum()
-    union = np.bitwise_or(mask, gt_mask).sum()
+def compute_iou(p_semantic, gt_semantic, class_index):
+    p_semantic = p_semantic == class_index
+    gt_semantic = gt_semantic == class_index
+    intersection = np.bitwise_and(p_semantic, gt_semantic).sum()
+    union = np.bitwise_or(p_semantic, gt_semantic).sum()
     return float(intersection) / float(union)
 
 class Evaluator:
@@ -25,25 +24,19 @@ class Evaluator:
 
     def _process_frames(self, dataset, visualize):
         ious = {}
-        for index in track(dataset.index_sampler.semantic_indices(), description="Rendering frames"):
+        gt_masks = dataset.scene.gt_masks(dataset.camera.size)
+        for index, gt_semantic in gt_masks:
             batch = dataset._get_test(index)
             pixels = torch.tensor(batch['pixels']).to(self.device)
             rays_o = torch.tensor(batch['rays_o']).to(self.device)
             rays_d = torch.tensor(batch['rays_d']).to(self.device)
             depth = torch.tensor(batch['depth']).to(self.device)
-            gt_semantic = torch.tensor(batch['semantic']).to(self.device)
             outputs = self.model.render(rays_o, rays_d, staged=True, perturb=False)
+            p_semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
             for class_index in range(1, len(self.classes)):
-                p_semantic = outputs['semantic'].argmax(dim=-1)
-                gt_mask = gt_semantic == class_index
-                if gt_mask.sum() == 0:
-                    continue
                 if visualize:
-                    self._visualize_frame(batch, outputs)
-                p_mask = p_semantic == class_index
-                intersection = torch.bitwise_and(p_mask, gt_mask).sum()
-                union = torch.bitwise_or(p_mask, gt_mask).sum()
-                iou = float(intersection.item()) / float(union.item())
+                    self._visualize_frame(batch, outputs, gt_semantic)
+                iou = compute_iou(p_semantic, gt_semantic, class_index)
                 scores = ious.get(class_index, [])
                 scores.append(iou)
                 ious[class_index] = scores
@@ -52,11 +45,15 @@ class Evaluator:
             ious[key] = np.mean(scores)
         return ious
 
-    def _visualize_frame(self, batch, outputs):
+    def _visualize_frame(self, batch, outputs, gt_semantic):
         semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
         from matplotlib import pyplot
-        gt_rgb = (batch['pixels'] * 255).astype(np.uint8)
-        pyplot.imshow(gt_rgb)
-        pyplot.imshow(COLORS[semantic], alpha=0.5)
+        rgb = (batch['pixels'] * 255).astype(np.uint8)
+        axis = pyplot.subplot2grid((1, 2), loc=(0, 0))
+        axis.imshow(rgb)
+        axis.imshow(COLORS[semantic], alpha=0.5)
+        axis = pyplot.subplot2grid((1, 2), loc=(0, 1))
+        axis.imshow(COLORS[gt_semantic])
+        pyplot.tight_layout()
         pyplot.show()
 
