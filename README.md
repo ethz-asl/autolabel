@@ -50,6 +50,7 @@ To fit the representation to the scene without the user interface, you can run `
 
 ## Installing
 
+The installation instructions were tested for Python 3.8. 
 Some dependencies are recommended to be installed through Anaconda. In your Anaconda env, you can install them with:
 ```
 conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
