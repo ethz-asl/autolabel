@@ -212,8 +212,9 @@ class PoseSaver:
     def _write_poses(self, poses):
         pose_dir = os.path.join(self.scene.path, 'pose')
         os.makedirs(pose_dir, exist_ok=True)
-        for i, T_CW in enumerate(poses):
-            pose_file = os.path.join(pose_dir, f'{i}.txt')
+        for depth_path, T_CW in zip(self.scene.depth_paths(), poses):
+            base_image_name = os.path.basename(depth_path).split('.')[0]
+            pose_file = os.path.join(pose_dir, f'{base_image_name}.txt')
             np.savetxt(pose_file, T_CW)
 
     def _write_bounds(self, bounds):
