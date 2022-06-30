@@ -220,7 +220,7 @@ class Pipeline:
     def __init__(self, flags):
         self.tmp_dir = tempfile.mkdtemp()
         self.flags = flags
-        self.scene = Scene(flags.scene)
+        self.scene = Scene(flags.scene, should_read_poses=False)
 
     def run(self):
         hloc = HLoc(self.tmp_dir, self.scene, self.flags)

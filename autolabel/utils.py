@@ -37,12 +37,15 @@ class Camera:
         return Camera(np.loadtxt(path), size)
 
 class Scene:
-    def __init__(self, scene_path):
+    def __init__(self, scene_path, should_read_poses=True):
         self.path = scene_path
         self.rgb_path = os.path.join(scene_path, 'rgb')
         self.depth_path = os.path.join(scene_path, 'depth')
         self.pose_path = os.path.join(scene_path, 'pose')
-        self._read_poses()
+        if (should_read_poses):
+            self._read_poses()
+        else:
+            self.poses = []
         intrinsics_path = os.path.join(scene_path, 'intrinsics.txt')
         image_size = self._peak_image_size()
         self.camera = Camera.from_path(intrinsics_path, image_size)
