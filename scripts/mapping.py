@@ -77,11 +77,9 @@ class ScaleEstimation:
 
     def _read_depth_maps(self):
         self.depth_maps = {}
-        # NOTE: The depth paths are ordered alphabetically, cf.,
-        # `Scene.depth_paths` in `utils.py`.
         for path in self.scene.depth_paths():
-            for frame_number in self.frame_numbers:
-                self.depth_maps[frame_number] = cv2.imread(path, -1) / 1000.0
+            frame_number = int(os.path.basename(path).split('.')[0])
+            self.depth_maps[frame_number] = cv2.imread(path, -1) / 1000.0
         depth_shape = next(iter(self.depth_maps.values())).shape
         depth_size = np.array([depth_shape[1], depth_shape[0]], dtype=np.float64)
         self.depth_to_color_ratio = depth_size / np.array(self.scene.camera.size, dtype=np.float64)
@@ -94,18 +92,7 @@ class ScaleEstimation:
             T_CW[:3, 3] = image.tvec
             frame_number = int(image.name.split('.')[0])
             poses.append((frame_number, T_CW))
-        poses = sorted(poses, key=lambda x: x[0])
-        # Images are ordered alphabetically in the dataset. In general their
-        # filename might not match their index in the dataset, e.g., if some
-        # numbers are missing from the filenames (for instance, if the filenames
-        # are `00000`, `00003`, `00007`, etc.). The following dictionary stores
-        # the map from filename to index in the dataset. The image filename is
-        # interpreted as an integer (e.g., `00007` -> 7).
-        self.image_filename_to_dataset_idx = {
-            image_name: dataset_idx
-            for dataset_idx, (image_name, _) in enumerate(poses)
-        }
-        self.poses = np.stack([p[1] for p in poses])
+        self.poses = dict(poses)
 
     def _lookup_depth(self, frame, xy):
         xy_depth = np.floor(self.depth_to_color_ratio * xy).astype(int)
@@ -116,19 +103,17 @@ class ScaleEstimation:
         point_depths = []
         measured_depths = []
         for image in images.values():
-            image_name = int(image.name.split('.')[0])
-            image_idx_in_dataset = self.image_filename_to_dataset_idx[
-                image_name]
+            frame_number = int(image.name.split('.')[0])
             points = image.get_valid_points2D()
             points3D = self.reconstruction.points3D
             for point in points:
-                depth_map_value = self._lookup_depth(image_idx_in_dataset,
+                depth_map_value = self._lookup_depth(frame_number,
                                                      point.xy)
 
                 if depth_map_value < self.min_depth:
                     continue
 
-                T_CW = self.poses[image_idx_in_dataset]
+                T_CW = self.poses[frame_number]
                 point3D = points3D[point.point3D_id]
 
                 p_C = transform_points(T_CW, point3D.xyz)
@@ -157,9 +142,12 @@ class ScaleEstimation:
         return np.mean(best_set)
 
     def _scale_poses(self, ratio):
-        poses =  self.poses.copy()
-        poses[:, :3, 3] *= ratio
-        return poses
+        scaled_poses = {}
+        for key, pose in self.poses.items():
+            new_pose = pose.copy()
+            new_pose[:3, 3] *= ratio
+            scaled_poses[key] = new_pose
+        return scaled_poses
 
     def run(self):
         scale_ratio = self._estimate_scale()
@@ -184,8 +172,9 @@ class PoseSaver:
         K = self.scene.camera.scale(depth_size).camera_matrix
         intrinsics = o3d.camera.PinholeCameraIntrinsic(int(depth_size[0]), int(depth_size[1]), K[0, 0], K[1, 1], K[0, 2], K[1, 2])
         pc = o3d.geometry.PointCloud()
-        for T_WC, depth in zip(poses, self.scene.depth_paths()):
-            depth = o3d.io.read_image(depth)
+        depth_frames = dict([(int(os.path.basename(p).split('.')[0]), p) for p in self.scene.depth_paths()])
+        for key, T_WC in poses.items():
+            depth = o3d.io.read_image(depth_frames[key])
 
             pc_C = o3d.geometry.PointCloud.create_from_depth_image(depth, depth_scale=1000.0, intrinsic=intrinsics)
             pc_C = np.asarray(pc_C.points)
@@ -210,9 +199,8 @@ class PoseSaver:
     def _write_poses(self, poses):
         pose_dir = os.path.join(self.scene.path, 'pose')
         os.makedirs(pose_dir, exist_ok=True)
-        for depth_path, T_CW in zip(self.scene.depth_paths(), poses):
-            base_image_name = os.path.basename(depth_path).split('.')[0]
-            pose_file = os.path.join(pose_dir, f'{base_image_name}.txt')
+        for key, T_CW in poses.items():
+            pose_file = os.path.join(pose_dir, f'{key}.txt')
             np.savetxt(pose_file, T_CW)
 
     def _write_bounds(self, bounds):
@@ -222,10 +210,14 @@ class PoseSaver:
             f.write(f"{min_str} {max_str} 0.01")
 
     def run(self):
-        T_WCs = [np.linalg.inv(T_CW) for T_CW in self.poses]
+        T_WCs = {}
+        for key, T_CW in self.poses.items():
+            T_WCs[key] = np.linalg.inv(T_CW)
         T, aabb, point_cloud = self.compute_bbox(T_WCs)
 
-        T_CWs = [np.linalg.inv(T @ T_WC) for T_WC in T_WCs]
+        T_CWs = {}
+        for key, T_WC in T_WCs.items():
+            T_CWs[key] = np.linalg.inv(T @ T_WC)
         self._write_poses(T_CWs)
         self._write_bounds(aabb)
 
