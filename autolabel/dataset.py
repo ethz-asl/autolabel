@@ -28,14 +28,20 @@ class LenDataset(torch.utils.data.IterableDataset):
 
 
 class LazyImageLoader:
-    def __init__(self, images, size):
+    def __init__(self, images, size, interpolation=cv2.INTER_CUBIC):
         self.images = images
         self.size = size
+        self.inter = interpolation
+        self._cache = {}
 
     def __getitem__(self, i):
-        image = self.images[i]
-        frame = np.array(Image.open(image), dtype=np.float32) / 255.
-        return cv2.resize(frame, self.size, interpolation=cv2.INTER_AREA)
+        image = self._cache.get(i, None)
+        if image is None:
+            image = self.images[i]
+            image = np.array(Image.open(image), dtype=np.float32) / 255.
+            image = cv2.resize(image, self.size, interpolation=self.inter)
+            self._cache[i] = image
+        return image
 
     def __len__(self):
         return len(self.images)
@@ -215,18 +221,22 @@ class SceneDataset(torch.utils.data.IterableDataset):
             T_WC = nerf_matrix_to_ngp(T_WC, scale=1.0)
             cameras.append(T_WC.astype(np.float32))
 
-            depth_image = cv2.imread(depth_images[index], -1)
-            depth = cv2.resize(depth_image, self.camera.size, cv2.INTER_NEAREST)
-            depths.append(depth)
+            if self.lazy:
+                depths.append(depth_images[index])
+            else:
+                depth_image = cv2.imread(depth_images[index], -1)
+                depth = cv2.resize(depth_image, self.camera.size, cv2.INTER_NEAREST)
+                depths.append(depth)
 
         if self.lazy:
             self.images = LazyImageLoader(images, self.camera.size)
+            self.depths = LazyImageLoader(depths, self.camera.size, interpolation=cv2.INTER_NEAREST)
         else:
             self.images = np.stack(images, axis=0)
+            self.depths = np.stack(depths, axis=0)
 
         aabb = self.scene.bbox()
 
-        self.depths = np.stack(depths)
         self.semantics = np.stack(semantics)
         self.index_sampler.update(self.semantics.reshape(-1, self.resolution))
         self.poses = np.stack(cameras, axis=0)

@@ -48,6 +48,7 @@ conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
 
 Install into your desired python environment with the following commands:
 ```
+pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
 git submodule update --init --recursive
 pushd torch_ngp
 pip install -e .

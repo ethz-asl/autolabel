@@ -26,6 +26,8 @@ def read_args():
     parser.add_argument('scene')
     parser.add_argument('--batch-size', type=int, default=4096)
     parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--dry', action='store_true',
+            help="Runs without the NeRF backend.")
     return parser.parse_args()
 
 def training_loop(flags, connection):
@@ -132,7 +134,8 @@ class SceneViewer(QWidget):
         self.connection, child_connection = multiprocessing.Pipe()
         self.message_bus = MessageBus(self.connection)
         self.process = Process(target=training_loop, args=(flags, child_connection))
-        self.process.start()
+        if not self.flags.dry:
+            self.process.start()
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self._request_image)

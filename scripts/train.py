@@ -12,7 +12,6 @@ import torch
 from torch import optim
 from autolabel.dataset import SceneDataset, LenDataset
 from autolabel.trainer import SimpleTrainer
-from autolabel.evaluation import Evaluator
 from autolabel import model_utils
 
 def read_args():
@@ -25,6 +24,9 @@ def read_args():
     parser.add_argument('--iters', type=int, default=10000)
     parser.add_argument('--workers', '-w', type=int, default=1)
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--geometric-features', '-g', type=int, default=31)
+    parser.add_argument('--encoding', default='hg', choices=['hg', 'hg+freq'], type=str,
+            help="Network positional encoding to use.")
     return parser.parse_args()
 
 def main():
@@ -32,7 +34,9 @@ def main():
 
     dataset = SceneDataset('train', flags.scene, factor=flags.factor_train, batch_size=flags.batch_size)
 
-    model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds)
+    model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
+            encoding=flags.encoding,
+            geometric_features=31)
 
     opt = Namespace(rand_pose=-1, color_space='srgb')
 
@@ -46,14 +50,13 @@ def main():
     train_dataloader._data = dataset
 
     criterion = torch.nn.MSELoss(reduction='none')
-    min_lr = 1e-7
     gamma = 0.5
-    steps = math.log(1e-6 / flags.lr, gamma)
+    steps = math.log(1e-4 / flags.lr, gamma)
     step_size = max(flags.iters // steps // 1000, 1)
     scheduler = lambda optimizer: optim.lr_scheduler.StepLR(optimizer, gamma=gamma, step_size=step_size)
 
     epochs = int(np.ceil(flags.iters / 1000))
-    workspace = os.path.join(flags.scene, 'nerf')
+    workspace = os.path.join(flags.scene, 'nerf', model_utils.model_hash(flags))
     trainer = SimpleTrainer('ngp', opt, model,
             device='cuda:0',
             workspace=workspace,
@@ -66,29 +69,8 @@ def main():
             metrics=[],
             use_checkpoint='latest')
     trainer.train(train_dataloader, epochs)
+    trainer.evaluate(self, train_dataloader)
     trainer.save_checkpoint()
-
-    test_dataset = SceneDataset('test', flags.scene, factor=flags.factor_test, batch_size=flags.batch_size)
-    test_dataloader = torch.utils.data.DataLoader(LenDataset(test_dataset, test_dataset.poses.shape[0]),
-            batch_size=None, num_workers=flags.workers)
-    test_dataloader._data = test_dataset
-    trainer.evaluate(test_dataloader)
-
-
-    classes = ['Background', 'Class 1']
-    evaluator = Evaluator(model, classes)
-    ious = evaluator.eval(test_dataset, visualize=flags.vis)
-
-    from rich.table import Table
-    from rich.console import Console
-    table = Table()
-    table.add_column('Class')
-    table.add_column('mIoU')
-    for class_index, miou in ious.items():
-        table.add_row(str(class_index), f"{miou:.3f}")
-    console = Console()
-    console.print(table)
-
 
 if __name__ == "__main__":
     main()

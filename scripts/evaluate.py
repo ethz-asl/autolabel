@@ -9,6 +9,9 @@ def read_args():
     parser.add_argument('scenes', nargs='+')
     parser.add_argument('--batch-size', type=int, default=4096)
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--geometric-features', '-g', type=int, default=31)
+    parser.add_argument('--encoding', default='hg', choices=['hg', 'hg+freq'], type=str,
+            help="Network positional encoding to use.")
     return parser.parse_args()
 
 def main(flags):
@@ -17,9 +20,12 @@ def main(flags):
     for scene in flags.scenes:
         scene_name = os.path.basename(os.path.normpath(scene))
         print(f"Evaluating on scene {scene_name}")
-        dataset = SceneDataset('test', scene, factor=4.0, batch_size=flags.batch_size)
-        model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds).cuda()
-        checkpoint_dir = os.path.join(scene, 'nerf', 'checkpoints')
+        dataset = SceneDataset('test', scene, factor=4.0, batch_size=flags.batch_size, lazy=True)
+        model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
+                encoding=flags.encoding,
+                geometric_features=flags.geometric_features).cuda()
+
+        checkpoint_dir = os.path.join(scene, 'nerf', model_utils.model_hash(flags), 'checkpoints')
         model_utils.load_checkpoint(model, checkpoint_dir)
         model = model.eval()
 

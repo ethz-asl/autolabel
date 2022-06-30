@@ -1,6 +1,6 @@
 import torch
 import glob
-from torch_ngp.nerf.network_ff import NeRFNetwork
+from autolabel.models import ALNetwork
 
 def load_checkpoint(model, checkpoint_dir, device='cuda:0'):
     checkpoint_list = sorted(glob.glob(f'{checkpoint_dir}/*.pth'))
@@ -9,14 +9,17 @@ def load_checkpoint(model, checkpoint_dir, device='cuda:0'):
     model.load_state_dict(checkpoint_dict['model'])
     return model
 
-def create_model(min_bounds, max_bounds):
+def model_hash(flags):
+    return f"g{flags.geometric_features}_{flags.encoding}"
+
+def create_model(min_bounds, max_bounds, encoding='hg', geometric_features=31):
     extents = max_bounds - min_bounds
     bound = (extents - (min_bounds + max_bounds) * 0.5).max()
-    return NeRFNetwork(num_layers=2, num_layers_color=2,
+    return ALNetwork(num_layers=2, num_layers_color=2,
             hidden_dim_color=64,
             hidden_dim=64,
-            geo_feat_dim=15,
-            encoding="hashgrid",
+            geo_feat_dim=geometric_features,
+            encoding=encoding,
             bound=float(bound),
             cuda_ray=False,
             density_scale=1)
