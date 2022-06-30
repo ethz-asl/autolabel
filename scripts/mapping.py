@@ -1,9 +1,7 @@
 import argparse
 import os
-import json
 import shutil
 import numpy as np
-import utils
 import pycolmap
 import tempfile
 import cv2
