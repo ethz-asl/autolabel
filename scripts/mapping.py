@@ -24,7 +24,7 @@ class HLoc:
     def __init__(self, tmp_dir, scene, flags):
         self.flags = flags
         self.scene = scene
-        self.exhaustive = len(scene) < 250
+        self.exhaustive = len(scene.rgb_paths()) < 250
 
         self.tmp_dir = Path(tmp_dir)
         self.sfm_pairs = self.tmp_dir / 'sfm-pairs.txt'
@@ -40,7 +40,7 @@ class HLoc:
         image_list = []
         image_paths = self.scene.rgb_paths()
         image_list_path = []
-        indices = np.arange(len(self.scene))
+        indices = np.arange(len(image_paths))
         for index in indices:
             image_list.append(image_paths[index])
             image_list_path.append(str(Path(image_paths[index]).relative_to(image_dir)))
@@ -72,7 +72,7 @@ class ScaleEstimation:
     def __init__(self, scene, colmap_dir):
         self.scene = scene
         self.colmap_dir = colmap_dir
-        self.frame_numbers = np.arange(len(scene))
+        self.frame_numbers = np.arange(len(scene.rgb_paths()))
         self.reconstruction = pycolmap.Reconstruction(colmap_dir)
         self._read_trajectory()
         self._read_depth_maps()
