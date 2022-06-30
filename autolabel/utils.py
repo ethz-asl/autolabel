@@ -52,6 +52,9 @@ class Scene:
         return (image.shape[1], image.shape[0])
 
     def _read_poses(self):
+        if not os.path.exists(self.pose_path):
+            self.poses = []
+            return
         pose_files = os.listdir(self.pose_path)
         pose_files = sorted([p for p in pose_files if p[0] != '.'], key=lambda p: int(p.split('.')[0]))
         self.poses = []
