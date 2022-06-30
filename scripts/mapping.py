@@ -90,7 +90,7 @@ class ScaleEstimation:
 
     def _read_trajectory(self):
         poses = []
-        for key, image in self.reconstruction.images.items():
+        for image in self.reconstruction.images.values():
             T_CW = np.eye(4)
             T_CW[:3, :3] = image.rotmat()
             T_CW[:3, 3] = image.tvec
@@ -117,7 +117,7 @@ class ScaleEstimation:
         images = self.reconstruction.images
         point_depths = []
         measured_depths = []
-        for image_id, image in images.items():
+        for image in images.values():
             image_name = int(image.name.split('.')[0])
             image_idx_in_dataset = self.image_filename_to_dataset_idx[
                 image_name]
