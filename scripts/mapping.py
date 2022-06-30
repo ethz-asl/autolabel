@@ -80,7 +80,6 @@ class ScaleEstimation:
     def _read_depth_maps(self):
         self.depth_maps = {}
         for path in self.scene.depth_paths():
-            frame_number = os.path.basename(path).split('.')[0]
             for frame_number in self.frame_numbers:
                 self.depth_maps[frame_number] = cv2.imread(path, -1) / 1000.0
         depth_shape = next(iter(self.depth_maps.values())).shape
