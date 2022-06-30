@@ -79,6 +79,8 @@ class ScaleEstimation:
 
     def _read_depth_maps(self):
         self.depth_maps = {}
+        # NOTE: The depth paths are ordered alphabetically, cf.,
+        # `Scene.depth_paths` in `utils.py`.
         for path in self.scene.depth_paths():
             for frame_number in self.frame_numbers:
                 self.depth_maps[frame_number] = cv2.imread(path, -1) / 1000.0
@@ -95,6 +97,16 @@ class ScaleEstimation:
             frame_number = int(image.name.split('.')[0])
             poses.append((frame_number, T_CW))
         poses = sorted(poses, key=lambda x: x[0])
+        # Images are ordered alphabetically in the dataset. In general their
+        # filename might not match their index in the dataset, e.g., if some
+        # numbers are missing from the filenames (for instance, if the filenames
+        # are `00000`, `00003`, `00007`, etc.). The following dictionary stores
+        # the map from filename to index in the dataset. The image filename is
+        # interpreted as an integer (e.g., `00007` -> 7).
+        self.image_filename_to_dataset_idx = {
+            image_name: dataset_idx
+            for dataset_idx, (image_name, _) in enumerate(poses)
+        }
         self.poses = np.stack([p[1] for p in poses])
 
     def _lookup_depth(self, frame, xy):
@@ -106,16 +118,19 @@ class ScaleEstimation:
         point_depths = []
         measured_depths = []
         for image_id, image in images.items():
-            frame_number = int(image.name.split('.')[0])
+            image_name = int(image.name.split('.')[0])
+            image_idx_in_dataset = self.image_filename_to_dataset_idx[
+                image_name]
             points = image.get_valid_points2D()
             points3D = self.reconstruction.points3D
             for point in points:
-                depth_map_value = self._lookup_depth(frame_number, point.xy)
+                depth_map_value = self._lookup_depth(image_idx_in_dataset,
+                                                     point.xy)
 
                 if depth_map_value < self.min_depth:
                     continue
 
-                T_CW = self.poses[frame_number]
+                T_CW = self.poses[image_idx_in_dataset]
                 point3D = points3D[point.point3D_id]
 
                 p_C = transform_points(T_CW, point3D.xyz)
