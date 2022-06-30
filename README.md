@@ -50,7 +50,7 @@ To fit the representation to the scene without the user interface, you can run `
 
 ## Installing
 
-The installation instructions were tested for Python 3.8. 
+The installation instructions were tested for Python 3.8 and 3.9.
 Some dependencies are recommended to be installed through Anaconda. In your Anaconda env, you can install them with:
 ```
 conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
@@ -59,8 +59,9 @@ conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
 Install into your desired python environment with the following commands:
 ```
 git clone --recursive https://github.com/cvg/Hierarchical-Localization/
-cd Hierarchical-Localization/
+pushd Hierarchical-Localization/
 python -m pip install -e .
+popd
 
 git submodule update --init --recursive
 pushd torch_ngp
