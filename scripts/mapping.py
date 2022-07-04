@@ -70,7 +70,6 @@ class ScaleEstimation:
     def __init__(self, scene, colmap_dir):
         self.scene = scene
         self.colmap_dir = colmap_dir
-        self.frame_numbers = np.arange(len(scene.rgb_paths()))
         self.reconstruction = pycolmap.Reconstruction(colmap_dir)
         self._read_trajectory()
         self._read_depth_maps()
