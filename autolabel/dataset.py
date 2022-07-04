@@ -30,6 +30,79 @@ class LazyImageLoader:
     def shape(self):
         return [len(self)]
 
+class IndexSampler:
+    def __init__(self):
+        self.classes = np.array([])
+        # Index is a dict[int, dict[int, array]]
+        # where the first index is the class_id
+        # and the second is the image index. The array
+        # contains indices which are labeled with that class.
+        self.index = {}
+        # dict[int, array[float]]
+        # where the first int is the class id, the array
+        # contains probabilities to sample that class.
+        self.image_weights = {}
+        self.has_semantics = False
+        self.image_range = np.array([])
+
+    def update(self, semantic_maps):
+        """
+        Recomputes the index.
+        0 is the null class, 1 is background and 2 onwards are actual classes.
+        """
+        assert len(semantic_maps.shape) == 2
+        self.index = {}
+        self.classes = np.unique(semantic_maps)
+        self.classes = self.classes[self.classes != 0] # remove null class
+        class_counts = {}
+        zeros = np.zeros(len(semantic_maps))
+        for i, semantic in enumerate(semantic_maps):
+            for class_id in self.classes:
+                where_class = semantic == class_id
+                if np.any(where_class):
+                    self.has_semantics = True
+                    image_indices = self.index.get(class_id, {})
+                    image_indices[i] = np.argwhere(where_class.ravel()).ravel()
+                    self.index[class_id] = image_indices
+
+                    counts = class_counts.get(class_id, zeros).copy()
+                    pixel_count = where_class.sum()
+                    counts[i] += where_class.sum()
+                    class_counts[class_id] = counts
+
+        for class_id, counts in class_counts.items():
+            total = counts.sum()
+            assert total != 0
+            class_counts[class_id] = counts / total
+        self.image_weights = class_counts
+        self.image_range = np.arange(len(semantic_maps), dtype=int)
+
+    def sample_class(self):
+        return np.random.choice(self.classes)
+
+    def sample(self, class_id, count=1):
+        """
+        Samples an image and {count} pixel indices belonging to class_id in the sampled image.
+        The images are sampled proportionally to how many class_id pixels exist in each image.
+        returns: tuple(sampled image index, list(sampled pixel index))
+        """
+        images = self.index[class_id]
+        probabilities = self.image_weights[class_id]
+        image_index = np.random.choice(self.image_range, p=probabilities)
+        pixel_indices = np.random.choice(images[image_index], count)
+        return image_index, pixel_indices
+
+    def semantic_indices(self):
+        """
+        Returns all image indices that have some semantic markings on them.
+        """
+        indices = set()
+        for class_id, semantic_index in self.index.items():
+            for index in semantic_index.keys():
+                indices.add(index)
+        return sorted(list(indices))
+
+
 class SceneDataset(torch.utils.data.IterableDataset):
     semantic_image_sample_ratio = 0.5
     def __init__(self, split, scene, factor=4.0, batch_size=4096, lazy=False):
@@ -37,6 +110,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.split = split
         self.batch_size = batch_size
         self.scene = Scene(scene)
+        self.index_sampler = IndexSampler()
         camera = self.scene.camera
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
@@ -45,8 +119,6 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.resolution = small_size[0] * small_size[1]
         self.camera = self.scene.camera.scale(small_size)
         self.intrinsics = np.array([self.camera.camera_matrix[0, 0], self.camera.camera_matrix[1, 1], self.camera.camera_matrix[0, 2], self.camera.camera_matrix[1, 2]])
-        self.images_with_semantics = np.array([])
-        self.semantic_indices = {}
         self._load_images()
         self._compute_rays()
         self.error_map = None
@@ -71,10 +143,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
         sampled_indices = np.random.randint(0, self.resolution, (batch_size,))
         for chunk in range(chunks):
-            if self.images_with_semantics.size > 0 and random.random() < self.semantic_image_sample_ratio:
-                image_index = np.random.choice(self.images_with_semantics)
-                indices = self.semantic_indices[image_index]
-                ray_indices = np.random.choice(indices, self.sample_chunk_size)
+            if self.index_sampler.has_semantics and random.random() < self.semantic_image_sample_ratio:
+                class_id = self.index_sampler.sample_class()
+                image_index, ray_indices = self.index_sampler.sample(class_id, self.sample_chunk_size)
             else:
                 image_index = np.random.randint(0, self.n_examples)
                 ray_indices = np.random.randint(0, self.resolution, (self.sample_chunk_size,))
@@ -144,9 +215,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
         self.depths = np.stack(depths)
         self.semantics = np.stack(semantics)
+        self.index_sampler.update(self.semantics.reshape(-1, self.resolution))
         self.poses = np.stack(cameras, axis=0)
-        self._update_semantic_indices()
-        self._compute_class_distribution()
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
         self.h = self.camera.size[1]
@@ -187,42 +257,13 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.directions = directions
 
     def semantic_map_updated(self, image_index):
-        semantic_path = os.path.join(self.scene.path, 'semantic', f"{image_index:06}.png")
+        semantic_path = os.path.join(self.scene.path, 'semantic', f"{image_index}.png")
         if os.path.exists(semantic_path):
             image = Image.open(semantic_path)
             image = np.asarray(image.resize(self.camera.size, Image.NEAREST))
             self.semantics[image_index, :] = image.reshape(self.resolution)
-            self._update_semantic_indices()
-            self._compute_class_distribution()
+            self.index_sampler.update(self.semantics)
         else:
             print(f"Could not find image {semantic_path}")
-
-    def _compute_class_distribution(self):
-        classes = np.unique(self.semantics)
-        if len(classes) == 1:
-            distribution = np.ones(2) * 0.5
-        else:
-            n_classes = np.max(classes)
-            counts = np.zeros(n_classes)
-            for class_id in classes:
-                if class_id == 0:
-                    continue
-                counts[class_id-1] = (self.semantics == class_id).sum()
-
-            distribution = counts / counts.sum() + 1e-10
-        print("class distribution: ", distribution)
-        self.class_distribution = distribution
-        weights = (1.0 / distribution)
-        self.class_weights = weights / weights.sum() * weights.size
-        print("class weights: ", self.class_weights)
-
-    def _update_semantic_indices(self):
-        indices = []
-        for i, semantic in enumerate(self.semantics):
-            positive = semantic > 0
-            if np.any(positive):
-                indices.append(i)
-                self.semantic_indices[i] = np.argwhere(positive.ravel()).ravel()
-        self.images_with_semantics = np.array(indices)
 
 

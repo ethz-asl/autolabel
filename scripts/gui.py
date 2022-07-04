@@ -221,7 +221,7 @@ class SceneViewer(QWidget):
             where_color = np.linalg.norm(array - color, 1, axis=-1) < 3
             # Store index + 1 as 0 is the null class.
             out_map[where_color] = i + 1
-        path = os.path.join(semantic_dir, f"{image_index:06}.png")
+        path = os.path.join(semantic_dir, f"{image_index}.png")
         Image.fromarray(out_map).save(path)
 
     def load(self):

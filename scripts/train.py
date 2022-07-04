@@ -89,8 +89,7 @@ def main():
     trainer.evaluate(test_dataloader)
 
 
-    classes = [f"Class {i}" for i in range(dataset.class_weights.size)]
-    classes[0] = 'Background'
+    classes = ['Background'] + [f"Class {i}" for i in dataset.index_sampler.classes]
     evaluator = Evaluator(model, classes)
     ious = evaluator.eval(test_dataset, visualize=flags.vis)
 

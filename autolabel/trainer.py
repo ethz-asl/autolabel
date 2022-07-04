@@ -38,7 +38,7 @@ class SimpleTrainer(Trainer):
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer.close()
 
-    def train_step(self, data, class_weights=None):
+    def train_step(self, data):
         rays_o = data['rays_o'].to(self.device) # [B, 3]
         rays_d = data['rays_d'].to(self.device) # [B, 3]
         gt_rgb = data['pixels'].to(self.device) # [B, 3]
@@ -60,8 +60,7 @@ class SimpleTrainer(Trainer):
         loss = loss.mean() + self.depth_weight * depth_loss.mean()
         pred_semantic = outputs['semantic']
         if use_semantic_loss.item():
-            sem_loss = F.cross_entropy(pred_semantic[has_semantic, :], gt_semantic[has_semantic],
-                    weight=class_weights)
+            sem_loss = F.cross_entropy(pred_semantic[has_semantic, :], gt_semantic[has_semantic])
             loss += self.semantic_weight * sem_loss
 
         return pred_rgb, gt_rgb, loss
@@ -100,11 +99,9 @@ class InteractiveTrainer(SimpleTrainer):
         kwargs['lr_scheduler'] = None
         super().__init__(*args, **kwargs)
         self.loader = None
-        self.class_weights = None
         self.lr_scheduler = lr_scheduler(self.optimizer)
 
     def init(self, loader):
-        self.class_weights = torch.tensor(loader._data.class_weights, device=self.device).to(torch.float32)
         self.model.train()
         self.iterator = iter(loader)
         self.step = 0
@@ -122,7 +119,7 @@ class InteractiveTrainer(SimpleTrainer):
             data = next(iterator)
             self.optimizer.zero_grad()
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                _, _, loss = self.train_step(data, class_weights=self.class_weights)
+                _, _, loss = self.train_step(data)
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -136,7 +133,7 @@ class InteractiveTrainer(SimpleTrainer):
         self.optimizer.zero_grad()
 
         with torch.cuda.amp.autocast(enabled=self.fp16):
-            _, _, loss = self.train_step(data, class_weights=self.class_weights)
+            _, _, loss = self.train_step(data)
 
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
@@ -150,7 +147,6 @@ class InteractiveTrainer(SimpleTrainer):
 
     def dataset_updated(self, loader):
         self.loader = loader
-        self.class_weights[:] = loader._data.class_weights
 
     def _step_scheduler(self, loss):
         if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
