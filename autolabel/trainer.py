@@ -20,16 +20,19 @@ from torch_ngp.nerf.utils import Trainer
 
 DEPTH_EPSILON = 0.01
 
+
 class SimpleTrainer(Trainer):
     depth_weight = 0.05
     semantic_weight = 0.25
 
     def train(self, dataloader, epochs):
         if self.use_tensorboardX and self.local_rank == 0:
-            self.writer = tensorboardX.SummaryWriter(os.path.join(self.workspace, "run", self.name))
+            self.writer = tensorboardX.SummaryWriter(
+                os.path.join(self.workspace, "run", self.name))
 
         if self.model.cuda_ray:
-            self.model.mark_untrained_grid(dataloader._data.poses, dataloader._data.intrinsics)
+            self.model.mark_untrained_grid(dataloader._data.poses,
+                                           dataloader._data.intrinsics)
 
         for i in range(0, epochs):
             self.train_one_epoch(dataloader)
@@ -39,19 +42,24 @@ class SimpleTrainer(Trainer):
             self.writer.close()
 
     def train_step(self, data):
-        rays_o = data['rays_o'].to(self.device) # [B, 3]
-        rays_d = data['rays_d'].to(self.device) # [B, 3]
-        gt_rgb = data['pixels'].to(self.device) # [B, 3]
-        gt_depth = data['depth'].to(self.device) # [B, 3]
+        rays_o = data['rays_o'].to(self.device)  # [B, 3]
+        rays_d = data['rays_d'].to(self.device)  # [B, 3]
+        gt_rgb = data['pixels'].to(self.device)  # [B, 3]
+        gt_depth = data['depth'].to(self.device)  # [B, 3]
         gt_semantic = data['semantic'].to(self.device)
         has_semantic = gt_semantic >= 0
         use_semantic_loss = has_semantic.sum() > 0
 
-        outputs = self.model.render(rays_o, rays_d, staged=False, bg_color=None, perturb=True, **vars(self.opt))
+        outputs = self.model.render(rays_o,
+                                    rays_d,
+                                    staged=False,
+                                    bg_color=None,
+                                    perturb=True,
+                                    **vars(self.opt))
 
         pred_rgb = outputs['image']
 
-        loss = self.criterion(pred_rgb, gt_rgb).mean(-1) # [B, N, 3] --> [B, N]
+        loss = self.criterion(pred_rgb, gt_rgb).mean(-1)  # [B, N, 3] --> [B, N]
 
         pred_depth = outputs['depth']
         has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
@@ -60,21 +68,27 @@ class SimpleTrainer(Trainer):
         loss = loss.mean() + self.depth_weight * depth_loss.mean()
         pred_semantic = outputs['semantic']
         if use_semantic_loss.item():
-            sem_loss = F.cross_entropy(pred_semantic[has_semantic, :], gt_semantic[has_semantic])
+            sem_loss = F.cross_entropy(pred_semantic[has_semantic, :],
+                                       gt_semantic[has_semantic])
             loss += self.semantic_weight * sem_loss
 
         return pred_rgb, gt_rgb, loss
 
     def eval_step(self, data):
 
-        rays_o = data['rays_o'].to(self.device) # [B, 3]
-        rays_d = data['rays_d'].to(self.device) # [B, 3]
-        gt_rgb = data['pixels'].to(self.device) # [B, H, W, 3]
-        gt_depth = data['depth'].to(self.device) # [B, H, W]
-        gt_semantic = data['semantic'].to(self.device) # [B, H, W]
+        rays_o = data['rays_o'].to(self.device)  # [B, 3]
+        rays_d = data['rays_d'].to(self.device)  # [B, 3]
+        gt_rgb = data['pixels'].to(self.device)  # [B, H, W, 3]
+        gt_depth = data['depth'].to(self.device)  # [B, H, W]
+        gt_semantic = data['semantic'].to(self.device)  # [B, H, W]
         H, W, _ = gt_rgb.shape
 
-        outputs = self.model.render(rays_o, rays_d, staged=True, bg_color=None, perturb=False, **vars(self.opt))
+        outputs = self.model.render(rays_o,
+                                    rays_d,
+                                    staged=True,
+                                    bg_color=None,
+                                    perturb=False,
+                                    **vars(self.opt))
 
         pred_rgb = outputs['image'].reshape(H, W, 3)
         pred_depth = outputs['depth'].reshape(H, W)
@@ -82,18 +96,23 @@ class SimpleTrainer(Trainer):
 
         loss = self.criterion(pred_rgb, gt_rgb).mean()
         has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
-        loss += self.depth_weight * (has_depth * torch.abs(pred_depth - gt_depth)).mean()
+        loss += self.depth_weight * (has_depth *
+                                     torch.abs(pred_depth - gt_depth)).mean()
 
         has_semantic = gt_semantic >= 0
         if has_semantic.sum().item() > 0:
-            semantic_loss = F.cross_entropy(pred_semantic[has_semantic, :], gt_semantic[has_semantic])
+            semantic_loss = F.cross_entropy(pred_semantic[has_semantic, :],
+                                            gt_semantic[has_semantic])
             loss += self.semantic_weight * semantic_loss
 
         pred_semantic = pred_semantic.reshape(H, W, pred_semantic.shape[-1])
 
-        return pred_rgb[None], pred_depth[None], pred_semantic[None], gt_rgb[None], loss
+        return pred_rgb[None], pred_depth[None], pred_semantic[None], gt_rgb[
+            None], loss
+
 
 class InteractiveTrainer(SimpleTrainer):
+
     def __init__(self, *args, **kwargs):
         lr_scheduler = kwargs['lr_scheduler']
         kwargs['lr_scheduler'] = None
@@ -105,7 +124,8 @@ class InteractiveTrainer(SimpleTrainer):
         self.model.train()
         self.iterator = iter(loader)
         self.step = 0
-        self.model.mark_untrained_grid(loader._data.poses, loader._data.intrinsics)
+        self.model.mark_untrained_grid(loader._data.poses,
+                                       loader._data.intrinsics)
 
     def train(self, loader):
         while True:
@@ -153,5 +173,3 @@ class InteractiveTrainer(SimpleTrainer):
             self.lr_scheduler.step(loss)
         else:
             self.lr_scheduler.step()
-
-

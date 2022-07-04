@@ -16,6 +16,7 @@ from autolabel.trainer import SimpleTrainer
 from autolabel.evaluation import Evaluator
 from autolabel import utils
 
+
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
@@ -28,7 +29,9 @@ def read_args():
     parser.add_argument('--vis', action='store_true')
     return parser.parse_args()
 
+
 class LenDataset(torch.utils.data.IterableDataset):
+
     def __init__(self, dataset, length):
         self.dataset = dataset
         self.length = length
@@ -41,22 +44,41 @@ class LenDataset(torch.utils.data.IterableDataset):
     def __len__(self):
         return self.length
 
+
 def main():
     flags = read_args()
 
-    dataset = SceneDataset('train', flags.scene, factor=flags.factor_train, batch_size=flags.batch_size)
+    dataset = SceneDataset('train',
+                           flags.scene,
+                           factor=flags.factor_train,
+                           batch_size=flags.batch_size)
 
     model = utils.create_model(dataset)
 
     opt = Namespace(rand_pose=-1, color_space='srgb')
 
     optimizer = lambda model: torch.optim.Adam([
-        {'name': 'encoding', 'params': list(model.encoder.parameters())},
-        {'name': 'net', 'params': list(model.sigma_net.parameters()) + list(model.color_net.parameters()), 'weight_decay': 1e-6},
-    ], lr=flags.lr, betas=(0.9, 0.99), eps=1e-15)
+        {
+            'name': 'encoding',
+            'params': list(model.encoder.parameters())
+        },
+        {
+            'name':
+                'net',
+            'params':
+                list(model.sigma_net.parameters()) + list(model.color_net.
+                                                          parameters()),
+            'weight_decay':
+                1e-6
+        },
+    ],
+                                               lr=flags.lr,
+                                               betas=(0.9, 0.99),
+                                               eps=1e-15)
 
     train_dataloader = torch.utils.data.DataLoader(LenDataset(dataset, 1000),
-            batch_size=None, num_workers=flags.workers)
+                                                   batch_size=None,
+                                                   num_workers=flags.workers)
     train_dataloader._data = dataset
 
     criterion = torch.nn.MSELoss(reduction='none')
@@ -64,32 +86,40 @@ def main():
     gamma = 0.5
     steps = math.log(1e-6 / flags.lr, gamma)
     step_size = max(flags.iters // steps // 1000, 1)
-    scheduler = lambda optimizer: optim.lr_scheduler.StepLR(optimizer, gamma=gamma, step_size=step_size)
+    scheduler = lambda optimizer: optim.lr_scheduler.StepLR(
+        optimizer, gamma=gamma, step_size=step_size)
 
     epochs = int(np.ceil(flags.iters / 1000))
     workspace = os.path.join(flags.scene, 'nerf')
-    trainer = SimpleTrainer('ngp', opt, model,
-            device='cuda:0',
-            workspace=workspace,
-            optimizer=optimizer,
-            criterion=criterion,
-            fp16=True,
-            ema_decay=0.95,
-            lr_scheduler=scheduler,
-            scheduler_update_every_step=False,
-            metrics=[],
-            use_checkpoint='latest')
+    trainer = SimpleTrainer('ngp',
+                            opt,
+                            model,
+                            device='cuda:0',
+                            workspace=workspace,
+                            optimizer=optimizer,
+                            criterion=criterion,
+                            fp16=True,
+                            ema_decay=0.95,
+                            lr_scheduler=scheduler,
+                            scheduler_update_every_step=False,
+                            metrics=[],
+                            use_checkpoint='latest')
     trainer.train(train_dataloader, epochs)
     trainer.save_checkpoint()
 
-    test_dataset = SceneDataset('test', flags.scene, factor=flags.factor_test, batch_size=flags.batch_size)
-    test_dataloader = torch.utils.data.DataLoader(LenDataset(test_dataset, test_dataset.poses.shape[0]),
-            batch_size=None, num_workers=flags.workers)
+    test_dataset = SceneDataset('test',
+                                flags.scene,
+                                factor=flags.factor_test,
+                                batch_size=flags.batch_size)
+    test_dataloader = torch.utils.data.DataLoader(LenDataset(
+        test_dataset, test_dataset.poses.shape[0]),
+                                                  batch_size=None,
+                                                  num_workers=flags.workers)
     test_dataloader._data = test_dataset
     trainer.evaluate(test_dataloader)
 
-
-    classes = ['Background'] + [f"Class {i}" for i in dataset.index_sampler.classes]
+    classes = ['Background'
+              ] + [f"Class {i}" for i in dataset.index_sampler.classes]
     evaluator = Evaluator(model, classes)
     ious = evaluator.eval(test_dataset, visualize=flags.vis)
 
@@ -106,4 +136,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
