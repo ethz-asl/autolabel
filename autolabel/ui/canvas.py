@@ -8,7 +8,9 @@ from autolabel.constants import COLORS
 ALPHA = 175
 QT_COLORS = [QtGui.QColor(c[0], c[1], c[2], ALPHA) for c in COLORS]
 
+
 class Canvas(QWidget):
+
     def __init__(self, width, height, cb):
         super().__init__()
         self.canvas_width = int(width)
@@ -19,8 +21,7 @@ class Canvas(QWidget):
         self.g_view = QtWidgets.QGraphicsView(self)
         self.g_view.setSceneRect(0, 0, self.canvas_width, self.canvas_height)
         self.g_view.setBackgroundBrush(
-                QtGui.QBrush(QtGui.QColor(52, 52, 52), QtCore.Qt.SolidPattern)
-        )
+            QtGui.QBrush(QtGui.QColor(52, 52, 52), QtCore.Qt.SolidPattern))
         self.g_scene = QtWidgets.QGraphicsScene(0, 0, width, height)
         self.g_view.setScene(self.g_scene)
         self.g_view.mousePressEvent = self._mouse_down
@@ -68,7 +69,8 @@ class Canvas(QWidget):
         if self.inferred_image is not None:
             self.g_scene.removeItem(self.inferred_image)
             self.inferred_image = None
-        self.scene_image = self.g_scene.addPixmap(QtGui.QPixmap.fromImage(self.image))
+        self.scene_image = self.g_scene.addPixmap(
+            QtGui.QPixmap.fromImage(self.image))
         self.canvas_pixmap = self.g_scene.addPixmap(self.canvas)
         self.canvas_pixmap.setZValue(2.0)
         self.scene_image.setScale(self.canvas_width / self.image_width)
@@ -89,14 +91,17 @@ class Canvas(QWidget):
         self.active_class = class_index
         self.painter = None
         self.painter = QtGui.QPainter(self.canvas)
-        self.painter.setPen(QtGui.QPen(self.color, self.brush_size, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
+        self.painter.setPen(
+            QtGui.QPen(self.color, self.brush_size, QtCore.Qt.SolidLine,
+                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         self.painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
 
     def set_inferred(self, image):
         image = COLORS[image]
         alpha = np.ones_like(image[:, :, :1]) * 120
         image = np.concatenate([image, alpha], axis=-1)
-        image = Image.fromarray(image).resize((self.canvas_width, self.canvas_height), Image.NEAREST)
+        image = Image.fromarray(image).resize(
+            (self.canvas_width, self.canvas_height), Image.NEAREST)
         pixmap = QtGui.QPixmap.fromImage(ImageQt(image))
         if self.inferred_image is not None:
             self.g_scene.removeItem(self.inferred_image)
@@ -115,4 +120,5 @@ class Canvas(QWidget):
     def sizeChanged(self, size):
         self.g_view.setFixedWidth(size.width())
         self.g_view.setFixedHeight(size.height())
-        self.g_view.fitInView(0, 0, self.canvas_width, self.canvas_height, QtCore.Qt.KeepAspectRatio)
+        self.g_view.fitInView(0, 0, self.canvas_width, self.canvas_height,
+                              QtCore.Qt.KeepAspectRatio)

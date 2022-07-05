@@ -15,11 +15,9 @@ from autolabel.constants import COLORS
 from autolabel.ui.canvas import Canvas, ALPHA
 from matplotlib import cm
 
-NUM_KEYS = [
-    QtCore.Qt.Key_0,
-    QtCore.Qt.Key_1
-]
+NUM_KEYS = [QtCore.Qt.Key_0, QtCore.Qt.Key_1]
 INFERENCE_UPDATE_INTERVAL = 5000
+
 
 def read_args():
     parser = argparse.ArgumentParser()
@@ -28,12 +26,15 @@ def read_args():
     parser.add_argument('--lr', type=float, default=1e-3)
     return parser.parse_args()
 
+
 def training_loop(flags, connection):
     training_loop = TrainingLoop(flags.scene, flags, connection)
     signal.signal(signal.SIGTERM, training_loop.shutdown)
     training_loop.run()
 
+
 class MessageBus:
+
     def __init__(self, connection):
         self.lock = multiprocessing.Lock()
         self.connection = connection
@@ -46,14 +47,19 @@ class MessageBus:
         with self.lock:
             self.connection.send(('update_image', image_index))
 
+
 class ImagesView(QtWidgets.QGridLayout):
+
     def __init__(self, canvas, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        image_size = (int(canvas.canvas_width / 2), int(canvas.canvas_height / 2))
-        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        image_size = (int(canvas.canvas_width / 2),
+                      int(canvas.canvas_height / 2))
+        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                                            QtWidgets.QSizePolicy.Expanding)
         size_policy.setHeightForWidth(True)
         size_policy.setWidthForHeight(True)
-        small_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+        small_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                             QtWidgets.QSizePolicy.Expanding)
         small_policy.setWidthForHeight(True)
         small_policy.setHeightForWidth(True)
 
@@ -82,7 +88,9 @@ class ImagesView(QtWidgets.QGridLayout):
 
     def set_depth(self, nparray):
         normalized_depth = 1.0 - np.clip(nparray, 0.0, 10.0) / 10.0
-        qimage = ImageQt(Image.fromarray((cm.inferno(normalized_depth) * 255).astype(np.uint8)))
+        qimage = ImageQt(
+            Image.fromarray(
+                (cm.inferno(normalized_depth) * 255).astype(np.uint8)))
         self.depth = QtGui.QPixmap.fromImage(qimage)
 
     def reset(self):
@@ -96,6 +104,7 @@ class ImagesView(QtWidgets.QGridLayout):
 
 
 class SceneViewer(QWidget):
+
     def __init__(self, flags):
         super().__init__()
         self.flags = flags
@@ -128,7 +137,8 @@ class SceneViewer(QWidget):
         self.load()
         self.connection, child_connection = multiprocessing.Pipe()
         self.message_bus = MessageBus(self.connection)
-        self.process = Process(target=training_loop, args=(flags, child_connection))
+        self.process = Process(target=training_loop,
+                               args=(flags, child_connection))
         self.process.start()
 
         self.timer = QtCore.QTimer()
@@ -183,7 +193,8 @@ class SceneViewer(QWidget):
 
         drawing = self._drawings.get(index, None)
         if drawing is None:
-            drawing = QtGui.QPixmap(self.canvas.canvas_width, self.canvas.canvas_height)
+            drawing = QtGui.QPixmap(self.canvas.canvas_width,
+                                    self.canvas.canvas_height)
             drawing.fill(QtGui.QColor(0, 0, 0, 0))
             self._drawings[index] = drawing
         image = self._image_cache[index]
@@ -241,7 +252,8 @@ class SceneViewer(QWidget):
             self._drawings[image_index] = QtGui.QPixmap.fromImage(qimage)
 
     def clear_image(self):
-        drawing = QtGui.QPixmap(self.canvas.canvas_width, self.canvas.canvas_height)
+        drawing = QtGui.QPixmap(self.canvas.canvas_width,
+                                self.canvas.canvas_height)
         drawing.fill(QtGui.QColor(0, 0, 0, 0))
         self._drawings[self.current_image_index] = drawing
         self._set_image(self.current_image_index)
@@ -266,6 +278,7 @@ class SceneViewer(QWidget):
         self._close()
         self.close()
 
+
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn')
     flags = read_args()
@@ -273,4 +286,3 @@ if __name__ == "__main__":
     viewer = SceneViewer(flags)
     viewer.show()
     app.exec()
-
