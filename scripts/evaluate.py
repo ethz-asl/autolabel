@@ -4,6 +4,7 @@ from autolabel.evaluation import Evaluator
 from autolabel.dataset import SceneDataset, LenDataset
 from autolabel import utils, model_utils
 
+
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scenes', nargs='+')
@@ -11,14 +12,19 @@ def read_args():
     parser.add_argument('--vis', action='store_true')
     return parser.parse_args()
 
+
 def main(flags):
     classes = ["Background", "Class 1"]
     ious = {}
     for scene in flags.scenes:
         scene_name = os.path.basename(os.path.normpath(scene))
         print(f"Evaluating on scene {scene_name}")
-        dataset = SceneDataset('test', scene, factor=4.0, batch_size=flags.batch_size)
-        model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds).cuda()
+        dataset = SceneDataset('test',
+                               scene,
+                               factor=4.0,
+                               batch_size=flags.batch_size)
+        model = model_utils.create_model(dataset.min_bounds,
+                                         dataset.max_bounds).cuda()
         checkpoint_dir = os.path.join(scene, 'nerf', 'checkpoints')
         model_utils.load_checkpoint(model, checkpoint_dir)
         model = model.eval()
@@ -41,6 +47,6 @@ def main(flags):
     console = Console()
     console.print(table)
 
+
 if __name__ == "__main__":
     main(read_args())
-
