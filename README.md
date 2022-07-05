@@ -58,7 +58,7 @@ conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
 
 Install into your desired python environment with the following commands:
 ```
-git clone --recursive https://github.com/cvg/Hierarchical-Localization/
+git clone --recursive https://github.com/francescomilano172/Hierarchical-Localization
 pushd Hierarchical-Localization/
 python -m pip install -e .
 popd

@@ -63,7 +63,8 @@ class HLoc:
                                         self.features,
                                         self.matches,
                                         image_list=image_list_path,
-                                        camera_mode=pycolmap.CameraMode.SINGLE)
+                                        camera_mode=pycolmap.CameraMode.SINGLE,
+                                        ba_refine_principal_point=True)
         else:
             retrieval_path = extract_features.main(self.retrieval_conf,
                                                    image_dir,
@@ -87,7 +88,8 @@ class HLoc:
                                         feature_path,
                                         match_path,
                                         image_list=image_list_path,
-                                        camera_mode=pycolmap.CameraMode.SINGLE)
+                                        camera_mode=pycolmap.CameraMode.SINGLE,
+                                        ba_refine_principal_point=True)
 
         if self.flags.vis:
             fig = viz_3d.init_figure()
