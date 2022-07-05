@@ -3,7 +3,9 @@ import cv2
 import numpy as np
 from torch_ngp.nerf.network_ff import NeRFNetwork
 
+
 class Camera:
+
     def __init__(self, camera_matrix, size):
         self.camera_matrix = camera_matrix
         self.size = size
@@ -36,7 +38,9 @@ class Camera:
     def from_path(self, path, size):
         return Camera(np.loadtxt(path), size)
 
+
 class Scene:
+
     def __init__(self, scene_path):
         self.path = scene_path
         self.rgb_path = os.path.join(scene_path, 'rgb')
@@ -48,12 +52,18 @@ class Scene:
         self.camera = Camera.from_path(intrinsics_path, image_size)
 
     def _peak_image_size(self):
-        image = cv2.imread(os.path.join(self.rgb_path, os.listdir(self.rgb_path)[0]))
+        image = cv2.imread(
+            os.path.join(self.rgb_path,
+                         os.listdir(self.rgb_path)[0]))
         return (image.shape[1], image.shape[0])
 
     def _read_poses(self):
+        if not os.path.exists(self.pose_path):
+            self.poses = []
+            return
         pose_files = os.listdir(self.pose_path)
-        pose_files = sorted(pose_files, key=lambda p: int(p.split('.')[0]))
+        pose_files = sorted([p for p in pose_files if p[0] != '.'],
+                            key=lambda p: int(p.split('.')[0]))
         self.poses = []
         for pose_file in pose_files:
             T_CW = np.loadtxt(os.path.join(self.pose_path, pose_file))
@@ -78,6 +88,14 @@ class Scene:
         depth_frames = sorted(depth_frames, key=lambda x: int(x.split('.')[0]))
         return [os.path.join(self.depth_path, d) for d in depth_frames]
 
+    def image_names(self):
+        """
+        Returns the filenames of rgb images without file extensions.
+        """
+        rgb_frames = os.listdir(self.rgb_path)
+        rgb_frames = sorted(rgb_frames, key=lambda x: int(x.split('.')[0]))
+        return [f.split('.')[0] for f in rgb_frames]
+
     def bbox(self):
         return np.loadtxt(os.path.join(self.path, 'bbox.txt'))[:6].reshape(2, 3)
 
@@ -92,26 +110,44 @@ class Scene:
         if not os.path.exists(gt_masks_dir):
             return []
         masks = []
-        mask_files = [os.path.join(gt_masks_dir, f) for f in os.listdir(gt_masks_dir)]
+        mask_files = [
+            os.path.join(gt_masks_dir, f) for f in os.listdir(gt_masks_dir)
+        ]
         for mask_file in mask_files:
             frame_number = int(os.path.basename(mask_file).split('.')[0])
             mask = _read_gt_mask(mask_file, size)
             masks.append((frame_number, _read_gt_mask(mask_file, size)))
         return sorted(masks, key=lambda x: x[0])
 
+
 def transform_points(T, points):
     R = T[:3, :3]
     t = T[:3, 3]
     return (R @ points[..., :, None])[..., :, 0] + t
 
+
 def _read_gt_mask(path, size):
     image = np.zeros((size[1], size[0]), dtype=np.uint8)
     with open(path, 'rt') as f:
         data = json.load(f)
-    scaling_factor = np.array([size[0] / data['imageWidth'], size[1] / data['imageHeight']])
+    scaling_factor = np.array(
+        [size[0] / data['imageWidth'], size[1] / data['imageHeight']])
     for shape in data['shapes']:
         polygon = (np.stack(shape['points']) * scaling_factor).astype(np.int32)
         #TODO: handle multiple classes.
         image = cv2.fillPoly(image, polygon[None], 1)
     return image
 
+
+def create_model(dataset):
+    extents = dataset.max_bounds - dataset.min_bounds
+    bound = (extents - (dataset.min_bounds + dataset.max_bounds) * 0.5).max()
+    return NeRFNetwork(num_layers=2,
+                       num_layers_color=2,
+                       hidden_dim_color=64,
+                       hidden_dim=64,
+                       geo_feat_dim=15,
+                       encoding="hashgrid",
+                       bound=float(bound),
+                       cuda_ray=False,
+                       density_scale=1)

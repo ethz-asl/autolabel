@@ -8,17 +8,36 @@ from autolabel.trainer import SimpleTrainer, InteractiveTrainer
 from autolabel.dataset import SceneDataset
 from autolabel.model_utils import create_model
 
+
 class TrainingLoop:
+
     def __init__(self, scene, flags, connection):
         self.flags = flags
         self.workspace = os.path.join(scene, 'nerf')
-        self.train_dataset = SceneDataset('train', scene, factor=4.0,
-                batch_size=flags.batch_size)
-        self.model = create_model(self.train_dataset.min_bounds, self.train_dataset.max_bounds)
+        self.train_dataset = SceneDataset('train',
+                                          scene,
+                                          factor=4.0,
+                                          batch_size=flags.batch_size)
+        self.model = create_model(self.train_dataset.min_bounds,
+                                  self.train_dataset.max_bounds)
         self.optimizer = lambda model: torch.optim.Adam([
-            {'name': 'encoding', 'params': list(model.encoder.parameters())},
-            {'name': 'net', 'params': list(model.sigma_net.parameters()) + list(model.color_net.parameters()), 'weight_decay': 1e-6},
-        ], lr=flags.lr, betas=(0.9, 0.99), eps=1e-15)
+            {
+                'name': 'encoding',
+                'params': list(model.encoder.parameters())
+            },
+            {
+                'name':
+                    'net',
+                'params':
+                    list(model.sigma_net.parameters()) + list(model.color_net.
+                                                              parameters()),
+                'weight_decay':
+                    1e-6
+            },
+        ],
+                                                        lr=flags.lr,
+                                                        betas=(0.9, 0.99),
+                                                        eps=1e-15)
         self.device = 'cuda:0'
         self.fp16 = True
         self._init_trainer()
@@ -27,23 +46,27 @@ class TrainingLoop:
 
     def _init_trainer(self):
         criterion = torch.nn.MSELoss(reduction='none')
-        scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(optimizer, factor=1.0)
+        scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(optimizer,
+                                                                    factor=1.0)
 
         opt = Namespace(rand_pose=-1, color_space='srgb')
-        self.trainer = InteractiveTrainer('ngp', opt, self.model,
-                device=self.device,
-                workspace=self.workspace,
-                optimizer=self.optimizer,
-                criterion=criterion,
-                fp16=self.fp16,
-                ema_decay=0.95,
-                lr_scheduler=scheduler,
-                metrics=[],
-                use_checkpoint='latest')
+        self.trainer = InteractiveTrainer('ngp',
+                                          opt,
+                                          self.model,
+                                          device=self.device,
+                                          workspace=self.workspace,
+                                          optimizer=self.optimizer,
+                                          criterion=criterion,
+                                          fp16=self.fp16,
+                                          ema_decay=0.95,
+                                          lr_scheduler=scheduler,
+                                          metrics=[],
+                                          use_checkpoint='latest')
 
     def _create_dataloader(self, dataset):
         loader = torch.utils.data.DataLoader(dataset,
-                batch_size=None, num_workers=0)
+                                             batch_size=None,
+                                             num_workers=0)
         loader._data = self.train_dataset
         return loader
 
@@ -94,7 +117,8 @@ class TrainingLoop:
         self.train_dataset.semantic_map_updated(image_index)
 
     def _save_checkpoint(self):
-        checkpoint_path = os.path.join(self.train_dataset.scene.path, 'nerf', 'checkpoints')
+        checkpoint_path = os.path.join(self.train_dataset.scene.path, 'nerf',
+                                       'checkpoints')
         name = self.trainer.name
         checkpoint_path = os.path.join(checkpoint_path, f"{name}.pth")
         state = {}
@@ -105,8 +129,10 @@ class TrainingLoop:
 
     def _to_tensor(self, data):
         dtype = torch.float32
-        data['rays_o'] = torch.tensor(data['rays_o'], device=self.device).to(dtype)
-        data['rays_d'] = torch.tensor(data['rays_d'], device=self.device).to(dtype)
+        data['rays_o'] = torch.tensor(data['rays_o'],
+                                      device=self.device).to(dtype)
+        data['rays_d'] = torch.tensor(data['rays_d'],
+                                      device=self.device).to(dtype)
         return data
 
     def log(self, message):
@@ -114,4 +140,3 @@ class TrainingLoop:
 
     def shutdown(self, *args):
         self.done = True
-
