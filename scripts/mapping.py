@@ -99,6 +99,23 @@ class HLoc:
                                        name="mapping")
             fig.show()
 
+        # Save output of COLMAP in text format.
+        colmap_output_dir = os.path.join(self.scene.path, 'colmap_output')
+        os.makedirs(colmap_output_dir, exist_ok=True)
+        model.write_text(colmap_output_dir)
+
+        # Save the intrinsics matrix, ignoring distortion parameter.
+        assert (len(model.cameras) == 1 and 1 in model.cameras)
+        focal_length, c_x, c_y = model.cameras[1].params[:3]
+        colmap_K = np.eye(3)
+        colmap_K[0, 0] = focal_length
+        colmap_K[1, 1] = focal_length
+        colmap_K[0, 2] = c_x
+        colmap_K[1, 2] = c_y
+        np.savetxt(fname=os.path.join(colmap_output_dir,
+                                      'intrinsics_colmap.txt'),
+                   X=colmap_K)
+
     def run(self):
         self._run_sfm()
 
