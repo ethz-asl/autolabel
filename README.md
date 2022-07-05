@@ -53,4 +53,20 @@ popd
 pip install -e .
 ```
 
+## Code formatting
+
+This repository enforces code formatting rules using [`yapf`](https://github.com/google/yapf). After installing, you can format the code before committing by running:
+```
+yapf --recursive autolabel scripts -i
+```
+
+### Vim
+
+In case you want to automatically run formatting in Vim on save, you can follow these steps.
+
+First, install `google/yapf` as a vim plugin. If using Vundle, add `Plugin 'google/yapf'` to your `.vimrc` and run `:PluginInstall`.
+
+Copy the file `.yapf.vim` to `$HOME/.vim/autoload/yapf.vim`, creating the autoload directory if it doesn't exist.
+
+To run yapf on save for Python files, add `autocmd FileType python autocmd BufWritePre <buffer> call yapf#YAPF()` to your `.vimrc` then restart vim.
 
