@@ -37,6 +37,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.split = split
         self.batch_size = batch_size
         self.scene = Scene(scene)
+        self.image_names = self.scene.image_names()
         camera = self.scene.camera
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
@@ -187,7 +188,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.directions = directions
 
     def semantic_map_updated(self, image_index):
-        semantic_path = os.path.join(self.scene.path, 'semantic', f"{image_index:06}.png")
+        filename = f"{self.image_names[image_index]}.png"
+        semantic_path = os.path.join(self.scene.path, 'semantic', f"{filename}.png")
         if os.path.exists(semantic_path):
             image = Image.open(semantic_path)
             image = np.asarray(image.resize(self.camera.size, Image.NEAREST))

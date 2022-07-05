@@ -13,20 +13,20 @@ Run the user interface with `python scripts/gui.py <scene>`
 The scene directory structure is as follows:
 ```
 rgb/            # Color frames either as png or jpg.
-  0.jpg
-  1.jpg
+  00000.jpg
+  00001.jpg
   ...
 depth/          # 16 bit grayscale png images where values are in millimeters.
-  0.png         # Depth frames might be smaller in size than the rgb frames.
-  1.png
+  00000.png         # Depth frames might be smaller in size than the rgb frames.
+  00001.png
   ...
 pose/
-  0.txt         # 4 x 4 world to camera transform.
-  1.txt
+  00000.txt         # 4 x 4 world to camera transform.
+  00001.txt
   ...
 semantic/       # Ground truth semantic annotations provided by user.
-  10.png        # These might not exist.
-  150.png
+  00010.png        # These might not exist.
+  00150.png
 intrinsics.txt  # 4 x 4 camera matrix.
 bbox.txt        # 6 values denoting the bounds of the scene (min_x, min_y, min_z, max_x, max_y, max_z).
 nerf/           # Contains NeRF checkpoints and training metadata.

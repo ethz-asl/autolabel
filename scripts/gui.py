@@ -100,6 +100,7 @@ class SceneViewer(QWidget):
         super().__init__()
         self.flags = flags
         self.scene = Scene(flags.scene)
+        self.image_names = self.scene.image_names()
         self._image_cache = {}
         self._drawings = {}
         self.setWindowTitle("Scene Viewer")
@@ -148,7 +149,7 @@ class SceneViewer(QWidget):
     def _request_image(self):
         if self.connection is None:
             return
-        self.log(f"requesting {self.current_image_index}")
+        self.log(f"requesting {self.current_image}")
         self.message_bus.get_image(self.current_image_index)
 
     def _update_image(self):
@@ -168,18 +169,19 @@ class SceneViewer(QWidget):
     def _canvas_callback(self):
         # Called when the mouse button is lifted on the canvas.
         self.log(f'Saving image {self.current_image_index}')
-        self._save_image(self.current_image_index)
+        self._save_image(self.current_image)
         self.message_bus.update_image(self.current_image_index)
 
     def _slider_value_change(self):
         self._set_image(self.slider.value())
 
     def _set_image(self, index):
+        self.current_image = self.image_names[index]
         self.current_image_index = index
-        pixmap = self._image_cache.get(index, None)
+        pixmap = self._image_cache.get(self.current_image, None)
         if pixmap is None:
             images = self.scene.rgb_paths()
-            self._image_cache[index] = Image.open(images[index])
+            self._image_cache[self.current_image] = Image.open(images[index])
 
         drawing = self._drawings.get(index, None)
         if drawing is None:
@@ -205,13 +207,13 @@ class SceneViewer(QWidget):
             self.clear_image()
 
     def save(self):
-        for image_index in self._drawings.keys():
-            self._save_image(image_index)
+        for image_name in self._drawings.keys():
+            self._save_image(image_name)
 
-    def _save_image(self, image_index):
+    def _save_image(self, image_name):
         semantic_dir = os.path.join(self.scene.path, 'semantic')
         os.makedirs(semantic_dir, exist_ok=True)
-        drawing = self._drawings[image_index]
+        drawing = self._drawings[image_name]
         array = np.asarray(fromqimage(drawing.toImage()))[:, :, :3]
         if array.max() == 0:
             # Canvas is empty. Skip.
@@ -221,7 +223,7 @@ class SceneViewer(QWidget):
             where_color = np.linalg.norm(array - color, 1, axis=-1) < 3
             # Store index + 1 as 0 is the null class.
             out_map[where_color] = i + 1
-        path = os.path.join(semantic_dir, f"{image_index:06}.png")
+        path = os.path.join(semantic_dir, f"{image_name}.png")
         Image.fromarray(out_map).save(path)
 
     def load(self):
@@ -230,7 +232,7 @@ class SceneViewer(QWidget):
             return
         images = os.listdir(semantic_dir)
         for image in images:
-            image_index = int(image.split('.')[0])
+            image_name = image.split('.')[0]
             image_path = os.path.join(semantic_dir, image)
             array = np.array(Image.open(image_path))
             colors = np.zeros((*array.shape, 4), dtype=np.uint8)
@@ -238,14 +240,14 @@ class SceneViewer(QWidget):
             colors[where_non_null, 3] = ALPHA
             colors[where_non_null, :3] = COLORS[array[where_non_null] - 1]
             qimage = ImageQt(Image.fromarray(colors))
-            self._drawings[image_index] = QtGui.QPixmap.fromImage(qimage)
+            self._drawings[image_name] = QtGui.QPixmap.fromImage(qimage)
 
     def clear_image(self):
         drawing = QtGui.QPixmap(self.canvas.canvas_width, self.canvas.canvas_height)
         drawing.fill(QtGui.QColor(0, 0, 0, 0))
-        self._drawings[self.current_image_index] = drawing
+        self._drawings[self.current_image] = drawing
         self._set_image(self.current_image_index)
-        image = self._image_cache[self.current_image_index]
+        image = self._image_cache[self.current_image]
         self.canvas.set_image(image, drawing)
         self._canvas_callback()
 

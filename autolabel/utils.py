@@ -81,6 +81,14 @@ class Scene:
         depth_frames = sorted(depth_frames, key=lambda x: int(x.split('.')[0]))
         return [os.path.join(self.depth_path, d) for d in depth_frames]
 
+    def image_names(self):
+        """
+        Returns the filenames of rgb images without file extensions.
+        """
+        rgb_frames = os.listdir(self.rgb_path)
+        rgb_frames = sorted(rgb_frames, key=lambda x: int(x.split('.')[0]))
+        return [f.split('.')[0] for f in rgb_frames]
+
     def bbox(self):
         return np.loadtxt(os.path.join(self.path, 'bbox.txt'))[:6]
 
