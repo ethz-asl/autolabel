@@ -3,7 +3,9 @@ import cv2
 import numpy as np
 from torch_ngp.nerf.network_ff import NeRFNetwork
 
+
 class Camera:
+
     def __init__(self, camera_matrix, size):
         self.camera_matrix = camera_matrix
         self.size = size
@@ -36,7 +38,9 @@ class Camera:
     def from_path(self, path, size):
         return Camera(np.loadtxt(path), size)
 
+
 class Scene:
+
     def __init__(self, scene_path):
         self.path = scene_path
         self.rgb_path = os.path.join(scene_path, 'rgb')
@@ -48,7 +52,9 @@ class Scene:
         self.camera = Camera.from_path(intrinsics_path, image_size)
 
     def _peak_image_size(self):
-        image = cv2.imread(os.path.join(self.rgb_path, os.listdir(self.rgb_path)[0]))
+        image = cv2.imread(
+            os.path.join(self.rgb_path,
+                         os.listdir(self.rgb_path)[0]))
         return (image.shape[1], image.shape[0])
 
     def _read_poses(self):
@@ -92,20 +98,22 @@ class Scene:
     def bbox(self):
         return np.loadtxt(os.path.join(self.path, 'bbox.txt'))[:6]
 
+
 def transform_points(T, points):
     R = T[:3, :3]
     t = T[:3, 3]
     return (R @ points[..., :, None])[..., :, 0] + t
 
+
 def create_model(dataset):
     extents = dataset.max_bounds - dataset.min_bounds
     bound = (extents - (dataset.min_bounds + dataset.max_bounds) * 0.5).max()
-    return NeRFNetwork(num_layers=2, num_layers_color=2,
-            hidden_dim_color=64,
-            hidden_dim=64,
-            geo_feat_dim=15,
-            encoding="hashgrid",
-            bound=float(bound),
-            cuda_ray=False,
-            density_scale=1)
-
+    return NeRFNetwork(num_layers=2,
+                       num_layers_color=2,
+                       hidden_dim_color=64,
+                       hidden_dim=64,
+                       geo_feat_dim=15,
+                       encoding="hashgrid",
+                       bound=float(bound),
+                       cuda_ray=False,
+                       density_scale=1)

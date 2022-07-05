@@ -3,6 +3,7 @@ import numpy as np
 from autolabel.constants import COLORS
 from rich.progress import track
 
+
 def compute_iou(mask, gt_mask):
     assert mask.shape == gt_mask.shape
     mask = mask > 0
@@ -11,7 +12,9 @@ def compute_iou(mask, gt_mask):
     union = np.bitwise_or(mask, gt_mask).sum()
     return float(intersection) / float(union)
 
+
 class Evaluator:
+
     def __init__(self, model, classes, device='cuda:0'):
         self.model = model
         self.classes = classes
@@ -25,14 +28,18 @@ class Evaluator:
 
     def _process_frames(self, dataset, visualize):
         ious = {}
-        for index in track(dataset.semantic_indices, description="Rendering frames"):
+        for index in track(dataset.index_sampler.semantic_indices(),
+                           description="Rendering frames"):
             batch = dataset._get_test(index)
             pixels = torch.tensor(batch['pixels']).to(self.device)
             rays_o = torch.tensor(batch['rays_o']).to(self.device)
             rays_d = torch.tensor(batch['rays_d']).to(self.device)
             depth = torch.tensor(batch['depth']).to(self.device)
             gt_semantic = torch.tensor(batch['semantic']).to(self.device)
-            outputs = self.model.render(rays_o, rays_d, staged=True, perturb=False)
+            outputs = self.model.render(rays_o,
+                                        rays_d,
+                                        staged=True,
+                                        perturb=False)
             for class_index in range(1, len(self.classes)):
                 p_semantic = outputs['semantic'].argmax(dim=-1)
                 gt_mask = gt_semantic == class_index
@@ -59,4 +66,3 @@ class Evaluator:
         pyplot.imshow(gt_rgb)
         pyplot.imshow(COLORS[semantic], alpha=0.5)
         pyplot.show()
-
