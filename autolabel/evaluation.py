@@ -4,6 +4,7 @@ from tqdm import tqdm
 from autolabel.constants import COLORS
 from rich.progress import track
 
+
 def compute_iou(p_semantic, gt_semantic, class_index):
     p_semantic = p_semantic == class_index
     gt_semantic = gt_semantic == class_index
@@ -13,7 +14,9 @@ def compute_iou(p_semantic, gt_semantic, class_index):
         return 0.0
     return float(intersection) / float(union)
 
+
 class Evaluator:
+
     def __init__(self, model, classes, device='cuda:0'):
         self.model = model
         self.classes = classes
@@ -34,7 +37,10 @@ class Evaluator:
             rays_o = torch.tensor(batch['rays_o']).to(self.device)
             rays_d = torch.tensor(batch['rays_d']).to(self.device)
             depth = torch.tensor(batch['depth']).to(self.device)
-            outputs = self.model.render(rays_o, rays_d, staged=True, perturb=False)
+            outputs = self.model.render(rays_o,
+                                        rays_d,
+                                        staged=True,
+                                        perturb=False)
             p_semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
             for class_index in range(1, len(self.classes)):
                 if visualize:
@@ -59,4 +65,3 @@ class Evaluator:
         axis.imshow(COLORS[gt_semantic])
         pyplot.tight_layout()
         pyplot.show()
-

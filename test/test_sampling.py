@@ -2,7 +2,9 @@ import unittest
 import numpy as np
 from autolabel.dataset import IndexSampler
 
+
 class SamplingTestCase(unittest.TestCase):
+
     def test_find_classes(self):
         semantics = np.zeros((2, 10), int)
         sampler = IndexSampler()
@@ -56,4 +58,3 @@ class SamplingTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

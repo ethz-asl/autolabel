@@ -15,27 +15,29 @@ from autolabel.constants import COLORS
 from autolabel.ui.canvas import Canvas, ALPHA
 from matplotlib import cm
 
-NUM_KEYS = [
-    QtCore.Qt.Key_0,
-    QtCore.Qt.Key_1
-]
+NUM_KEYS = [QtCore.Qt.Key_0, QtCore.Qt.Key_1]
 INFERENCE_UPDATE_INTERVAL = 5000
+
 
 def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
     parser.add_argument('--batch-size', type=int, default=4096)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--dry', action='store_true',
-            help="Runs without the NeRF backend.")
+    parser.add_argument('--dry',
+                        action='store_true',
+                        help="Runs without the NeRF backend.")
     return parser.parse_args()
+
 
 def training_loop(flags, connection):
     training_loop = TrainingLoop(flags.scene, flags, connection)
     signal.signal(signal.SIGTERM, training_loop.shutdown)
     training_loop.run()
 
+
 class MessageBus:
+
     def __init__(self, connection):
         self.lock = multiprocessing.Lock()
         self.connection = connection
@@ -51,14 +53,19 @@ class MessageBus:
     def save_checkpoint(self):
         self.connection.send(('checkpoint', None))
 
+
 class ImagesView(QtWidgets.QGridLayout):
+
     def __init__(self, canvas, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        image_size = (int(canvas.canvas_width / 2), int(canvas.canvas_height / 2))
-        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        image_size = (int(canvas.canvas_width / 2),
+                      int(canvas.canvas_height / 2))
+        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                                            QtWidgets.QSizePolicy.Expanding)
         size_policy.setHeightForWidth(True)
         size_policy.setWidthForHeight(True)
-        small_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+        small_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                             QtWidgets.QSizePolicy.Expanding)
         small_policy.setWidthForHeight(True)
         small_policy.setHeightForWidth(True)
 
@@ -87,7 +94,9 @@ class ImagesView(QtWidgets.QGridLayout):
 
     def set_depth(self, nparray):
         normalized_depth = 1.0 - np.clip(nparray, 0.0, 10.0) / 10.0
-        qimage = ImageQt(Image.fromarray((cm.inferno(normalized_depth) * 255).astype(np.uint8)))
+        qimage = ImageQt(
+            Image.fromarray(
+                (cm.inferno(normalized_depth) * 255).astype(np.uint8)))
         self.depth = QtGui.QPixmap.fromImage(qimage)
 
     def reset(self):
@@ -101,10 +110,13 @@ class ImagesView(QtWidgets.QGridLayout):
 
 
 class SceneViewer(QWidget):
+
     def __init__(self, flags):
         super().__init__()
         self.flags = flags
         self.scene = Scene(flags.scene)
+        self.image_names = self.scene.image_names()
+        self.rgb_paths = self.scene.rgb_paths()
         self._image_cache = {}
         self._drawings = {}
         self.setWindowTitle("Scene Viewer")
@@ -133,7 +145,8 @@ class SceneViewer(QWidget):
         self.load()
         self.connection, child_connection = multiprocessing.Pipe()
         self.message_bus = MessageBus(self.connection)
-        self.process = Process(target=training_loop, args=(flags, child_connection))
+        self.process = Process(target=training_loop,
+                               args=(flags, child_connection))
         if not self.flags.dry:
             self.process.start()
 
@@ -154,7 +167,7 @@ class SceneViewer(QWidget):
     def _request_image(self):
         if self.connection is None:
             return
-        self.log(f"requesting {self.current_image_index}")
+        self.log(f"requesting {self.current_image}")
         self.message_bus.get_image(self.current_image_index)
 
     def _update_image(self):
@@ -173,26 +186,28 @@ class SceneViewer(QWidget):
 
     def _canvas_callback(self):
         # Called when the mouse button is lifted on the canvas.
-        self.log(f'Saving image {self.current_image_index}')
-        self._save_image(self.current_image_index)
+        self.log(f'Saving image {self.current_image}')
+        self._save_image(self.current_image)
         self.message_bus.update_image(self.current_image_index)
 
     def _slider_value_change(self):
         self._set_image(self.slider.value())
 
     def _set_image(self, index):
+        self.current_image = self.image_names[index]
         self.current_image_index = index
-        pixmap = self._image_cache.get(index, None)
+        pixmap = self._image_cache.get(self.current_image, None)
         if pixmap is None:
-            images = self.scene.rgb_paths()
-            self._image_cache[index] = Image.open(images[index])
+            self._image_cache[self.current_image] = Image.open(
+                self.rgb_paths[index])
 
-        drawing = self._drawings.get(index, None)
+        drawing = self._drawings.get(self.current_image, None)
         if drawing is None:
-            drawing = QtGui.QPixmap(self.canvas.canvas_width, self.canvas.canvas_height)
+            drawing = QtGui.QPixmap(self.canvas.canvas_width,
+                                    self.canvas.canvas_height)
             drawing.fill(QtGui.QColor(0, 0, 0, 0))
-            self._drawings[index] = drawing
-        image = self._image_cache[index]
+            self._drawings[self.current_image] = drawing
+        image = self._image_cache[self.current_image]
         self.canvas.set_image(image, drawing)
         self.images_view.reset()
         self._request_image()
@@ -215,10 +230,10 @@ class SceneViewer(QWidget):
             self._save_image(image_index)
         self.message_bus.save_checkpoint()
 
-    def _save_image(self, image_index):
+    def _save_image(self, image_name):
         semantic_dir = os.path.join(self.scene.path, 'semantic')
         os.makedirs(semantic_dir, exist_ok=True)
-        drawing = self._drawings[image_index]
+        drawing = self._drawings[image_name]
         array = np.asarray(fromqimage(drawing.toImage()))[:, :, :3]
         if array.max() == 0:
             # Canvas is empty. Skip.
@@ -228,7 +243,7 @@ class SceneViewer(QWidget):
             where_color = np.linalg.norm(array - color, 1, axis=-1) < 3
             # Store index + 1 as 0 is the null class.
             out_map[where_color] = i + 1
-        path = os.path.join(semantic_dir, f"{image_index}.png")
+        path = os.path.join(semantic_dir, f"{image_name}.png")
         Image.fromarray(out_map).save(path)
 
     def load(self):
@@ -237,7 +252,7 @@ class SceneViewer(QWidget):
             return
         images = os.listdir(semantic_dir)
         for image in images:
-            image_index = int(image.split('.')[0])
+            image_name = image.split('.')[0]
             image_path = os.path.join(semantic_dir, image)
             array = np.array(Image.open(image_path))
             colors = np.zeros((*array.shape, 4), dtype=np.uint8)
@@ -245,14 +260,15 @@ class SceneViewer(QWidget):
             colors[where_non_null, 3] = ALPHA
             colors[where_non_null, :3] = COLORS[array[where_non_null] - 1]
             qimage = ImageQt(Image.fromarray(colors))
-            self._drawings[image_index] = QtGui.QPixmap.fromImage(qimage)
+            self._drawings[image_name] = QtGui.QPixmap.fromImage(qimage)
 
     def clear_image(self):
-        drawing = QtGui.QPixmap(self.canvas.canvas_width, self.canvas.canvas_height)
+        drawing = QtGui.QPixmap(self.canvas.canvas_width,
+                                self.canvas.canvas_height)
         drawing.fill(QtGui.QColor(0, 0, 0, 0))
-        self._drawings[self.current_image_index] = drawing
+        self._drawings[self.current_image] = drawing
         self._set_image(self.current_image_index)
-        image = self._image_cache[self.current_image_index]
+        image = self._image_cache[self.current_image]
         self.canvas.set_image(image, drawing)
         self._canvas_callback()
 
@@ -273,6 +289,7 @@ class SceneViewer(QWidget):
         self._close()
         self.close()
 
+
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn')
     flags = read_args()
@@ -280,4 +297,3 @@ if __name__ == "__main__":
     viewer = SceneViewer(flags)
     viewer.show()
     app.exec()
-
