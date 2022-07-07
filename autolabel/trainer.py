@@ -75,7 +75,6 @@ class SimpleTrainer(Trainer):
         return pred_rgb, gt_rgb, loss
 
     def eval_step(self, data):
-
         rays_o = data['rays_o'].to(self.device)  # [B, 3]
         rays_d = data['rays_d'].to(self.device)  # [B, 3]
         gt_rgb = data['pixels'].to(self.device)  # [B, H, W, 3]

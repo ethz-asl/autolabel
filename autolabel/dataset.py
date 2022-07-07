@@ -308,8 +308,6 @@ class SceneDataset(torch.utils.data.IterableDataset):
             self.depths = self.depths.reshape(self.n_examples, self.resolution)
             self.semantics = self.semantics.reshape(self.n_examples,
                                                     self.resolution)
-        elif self.split == 'test':
-            directions = directions.reshape(self.n_examples, self.h, self.w, 3)
 
         self.directions = directions
 

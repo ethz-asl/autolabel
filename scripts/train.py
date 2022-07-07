@@ -9,6 +9,7 @@ import threading
 import cv2
 import numpy as np
 import torch
+import pickle
 from torch import optim
 from autolabel.dataset import SceneDataset, LenDataset
 from autolabel.trainer import SimpleTrainer
@@ -16,22 +17,21 @@ from autolabel import model_utils
 
 
 def read_args():
-    parser = argparse.ArgumentParser()
+    parser = model_utils.model_flag_parser()
     parser.add_argument('scene')
     parser.add_argument('--factor-train', type=float, default=2.0)
     parser.add_argument('--factor-test', type=float, default=4.0)
     parser.add_argument('--batch-size', '-b', type=int, default=4096)
-    parser.add_argument('--lr', type=float, default=1e-2)
     parser.add_argument('--iters', type=int, default=10000)
     parser.add_argument('--workers', '-w', type=int, default=1)
     parser.add_argument('--vis', action='store_true')
-    parser.add_argument('--geometric-features', '-g', type=int, default=31)
-    parser.add_argument('--encoding',
-                        default='hg',
-                        choices=['hg', 'hg+freq'],
-                        type=str,
-                        help="Network positional encoding to use.")
     return parser.parse_args()
+
+
+def write_params(workspace, flags):
+    os.makedirs(workspace, exist_ok=True)
+    with open(os.path.join(workspace, 'params.pkl'), 'wb') as f:
+        pickle.dump(flags, f)
 
 
 def main():
@@ -82,6 +82,7 @@ def main():
 
     epochs = int(np.ceil(flags.iters / 1000))
     workspace = os.path.join(flags.scene, 'nerf', model_utils.model_hash(flags))
+    write_params(workspace, flags)
     trainer = SimpleTrainer('ngp',
                             opt,
                             model,
@@ -96,7 +97,16 @@ def main():
                             metrics=[],
                             use_checkpoint='latest')
     trainer.train(train_dataloader, epochs)
-    trainer.evaluate(self, train_dataloader)
+
+    testset = SceneDataset('test',
+                           flags.scene,
+                           factor=flags.factor_test,
+                           batch_size=flags.batch_size * 2)
+    test_dataloader = torch.utils.data.DataLoader(LenDataset(
+        testset, testset.poses.shape[0]),
+                                                  batch_size=None,
+                                                  num_workers=0)
+    trainer.evaluate(test_dataloader)
     trainer.save_checkpoint()
 
 

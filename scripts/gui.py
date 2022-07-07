@@ -10,6 +10,7 @@ from torch import multiprocessing
 from torch.multiprocessing import Process
 import signal
 from autolabel.utils import Scene
+from autolabel import model_utils
 from autolabel.backend import TrainingLoop
 from autolabel.constants import COLORS
 from autolabel.ui.canvas import Canvas, ALPHA
@@ -20,10 +21,9 @@ INFERENCE_UPDATE_INTERVAL = 5000
 
 
 def read_args():
-    parser = argparse.ArgumentParser()
+    parser = model_utils.model_flag_parser()
     parser.add_argument('scene')
     parser.add_argument('--batch-size', type=int, default=4096)
-    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--dry',
                         action='store_true',
                         help="Runs without the NeRF backend.")
