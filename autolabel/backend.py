@@ -30,13 +30,9 @@ class TrainingLoop:
                 'params': list(model.encoder.parameters())
             },
             {
-                'name':
-                    'net',
-                'params':
-                    list(model.sigma_net.parameters()) + list(model.color_net.
-                                                              parameters()),
-                'weight_decay':
-                    1e-6
+                'name': 'net',
+                'params': model.network_parameters(),
+                'weight_decay': 1e-6
             },
         ],
                                                         lr=flags.lr,

@@ -11,23 +11,26 @@ import tinycudann as tcnn
 
 from torch_ngp.nerf.renderer import NeRFRenderer
 
+
 class HGFreqEncoder(nn.Module):
+
     def __init__(self, input_dim):
         super().__init__()
         self.encoder = tcnn.Encoding(input_dim, {
             "otype": "Frequency",
             "n_frequencies": 12
         })
-        self.grid_encoding = tcnn.Encoding(input_dim, {
-            "otype": "Grid",
-            "type": "Hash",
-            "n_levels": 16,
-            "n_features_per_level": 2,
-            "log2_hashmap_size": 19,
-            "base_resolution": 16,
-            "per_level_scale": 2.0,
-            "interpolation": "Linear"
-        })
+        self.grid_encoding = tcnn.Encoding(
+            input_dim, {
+                "otype": "Grid",
+                "type": "Hash",
+                "n_levels": 16,
+                "n_features_per_level": 2,
+                "log2_hashmap_size": 19,
+                "base_resolution": 16,
+                "per_level_scale": 2.0,
+                "interpolation": "Linear"
+            })
         self.n_output_dims = self.encoder.n_output_dims + self.grid_encoding.n_output_dims
 
     def forward(self, x, bound):
@@ -38,7 +41,9 @@ class HGFreqEncoder(nn.Module):
 
 
 class ALNetwork(NeRFRenderer):
-    def __init__(self, encoding='hg',
+
+    def __init__(self,
+                 encoding='hg',
                  num_layers=2,
                  hidden_dim=64,
                  geo_feat_dim=15,
@@ -57,26 +62,24 @@ class ALNetwork(NeRFRenderer):
 
         self.encoder, self.in_dim = self._get_encoder(encoding)
 
-        self.sigma_net = tcnn.Network(
-            n_input_dims=self.in_dim,
-            n_output_dims=1 + self.geo_feat_dim,
-            network_config={
-                "otype": "FullyFusedMLP",
-                "activation": "ReLU",
-                "output_activation": "None",
-                "n_neurons": self.hidden_dim,
-                "n_hidden_layers": self.num_layers
-            })
+        self.sigma_net = tcnn.Network(n_input_dims=self.in_dim,
+                                      n_output_dims=1 + self.geo_feat_dim,
+                                      network_config={
+                                          "otype": "FullyFusedMLP",
+                                          "activation": "ReLU",
+                                          "output_activation": "None",
+                                          "n_neurons": self.hidden_dim,
+                                          "n_hidden_layers": self.num_layers
+                                      })
 
         # color network
         self.num_layers_color = num_layers_color
         self.hidden_dim_color = hidden_dim_color
-        self.encoder_dir = tcnn.Encoding(
-            n_input_dims=3,
-            encoding_config={
-                "otype": "SphericalHarmonics",
-                "degree": 4
-            })
+        self.encoder_dir = tcnn.Encoding(n_input_dims=3,
+                                         encoding_config={
+                                             "otype": "SphericalHarmonics",
+                                             "degree": 4
+                                         })
         self.color_features = self.encoder_dir.n_output_dims + self.geo_feat_dim + 1
 
         self.color_net = FFMLP(
@@ -88,12 +91,10 @@ class ALNetwork(NeRFRenderer):
 
         self.hidden_dim_semantic = hidden_dim_semantic
         self.semantic_classes = semantic_classes
-        self.semantic_net = FFMLP(
-            input_dim=self.geo_feat_dim + 1,
-            output_dim=semantic_classes,
-            hidden_dim=self.hidden_dim_semantic,
-            num_layers=self.num_layers
-        )
+        self.semantic_net = FFMLP(input_dim=self.geo_feat_dim + 1,
+                                  output_dim=semantic_classes,
+                                  hidden_dim=self.hidden_dim_semantic,
+                                  num_layers=self.num_layers)
 
     def _get_encoder(self, encoding):
         if encoding == 'hg':
@@ -149,7 +150,8 @@ class ALNetwork(NeRFRenderer):
         mask: [N,], bool, indicates where we actually needs to compute rgb.
         """
         if mask is not None:
-            rgbs = torch.zeros(mask.shape[0], 3, dtype=x.dtype, device=x.device) # [N, 3]
+            rgbs = torch.zeros(mask.shape[0], 3, dtype=x.dtype,
+                               device=x.device)  # [N, 3]
             # in case of empty mask
             if not mask.any():
                 return rgbs
@@ -159,7 +161,7 @@ class ALNetwork(NeRFRenderer):
 
         d = self.encoder_dir(d)
 
-        p = torch.zeros_like(geo_feat[..., :1]) # manual input padding
+        p = torch.zeros_like(geo_feat[..., :1])  # manual input padding
         h = torch.cat([d, geo_feat, p], dim=-1)
 
         h = self.color_net(h)
@@ -174,12 +176,22 @@ class ALNetwork(NeRFRenderer):
         return rgbs
 
     def get_params(self, lr):
-        params = [
-            {'params': self.encoder.parameters(), 'lr': lr},
-            {'params': self.sigma_net.parameters(), 'lr': lr},
-            {'params': self.encoder_dir.parameters(), 'lr': lr},
-            {'params': self.color_net.parameters(), 'lr': lr},
-        ]
+        params = [{
+            'params': self.encoder.parameters(),
+            'lr': lr
+        }, {
+            'params': self.sigma_net.parameters(),
+            'lr': lr
+        }, {
+            'params': self.encoder_dir.parameters(),
+            'lr': lr
+        }, {
+            'params': self.color_net.parameters(),
+            'lr': lr
+        }, {
+            'params': self.semantic_net.parameters(),
+            'lr': lr
+        }]
         if self.bg_radius > 0:
             params.append({'params': self.encoder_bg.parameters(), 'lr': lr})
             params.append({'params': self.bg_net.parameters(), 'lr': lr})
@@ -196,3 +208,9 @@ class ALNetwork(NeRFRenderer):
         features = torch.cat([features, zeros], dim=-1)
         return self.semantic_net(features)
 
+    def network_parameters(self):
+        """
+        return: list of parameters in the neural networks, excluding encoder parameters
+        """
+        return list(self.sigma_net.parameters()) + list(
+            self.color_net.parameters()) + list(self.semantic_net.parameters())

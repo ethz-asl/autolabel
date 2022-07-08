@@ -42,10 +42,11 @@ def main():
                            factor=flags.factor_train,
                            batch_size=flags.batch_size)
 
-    model = model_utils.create_model(dataset.min_bounds,
-                                     dataset.max_bounds,
-                                     encoding=flags.encoding,
-                                     geometric_features=31)
+    model = model_utils.create_model(
+        dataset.min_bounds,
+        dataset.max_bounds,
+        encoding=flags.encoding,
+        geometric_features=flags.geometric_features)
 
     opt = Namespace(rand_pose=-1, color_space='srgb')
 
@@ -55,13 +56,9 @@ def main():
             'params': list(model.encoder.parameters())
         },
         {
-            'name':
-                'net',
-            'params':
-                list(model.sigma_net.parameters()) + list(model.color_net.
-                                                          parameters()),
-            'weight_decay':
-                1e-6
+            'name': 'net',
+            'params': model.network_parameters(),
+            'weight_decay': 1e-6
         },
     ],
                                                lr=flags.lr,
