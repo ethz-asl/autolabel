@@ -7,8 +7,9 @@ import tempfile
 import cv2
 import open3d as o3d
 from pathlib import Path
-from autolabel.utils import Scene, transform_points
-from hloc import extract_features, match_features, reconstruction, pairs_from_exhaustive, pairs_from_retrieval
+from autolabel.utils import ImageUndistorter, Scene, transform_points
+from hloc import (extract_features, match_features, reconstruction,
+                  pairs_from_exhaustive, pairs_from_retrieval)
 from hloc.utils import viz_3d
 
 
@@ -106,20 +107,56 @@ class HLoc:
         os.makedirs(colmap_output_dir, exist_ok=True)
         model.write_text(colmap_output_dir)
 
-        # Save the intrinsics matrix, ignoring distortion parameter.
+        # Save the intrinsics matrix and the distortion parameters.
         assert (len(model.cameras) == 1 and 1 in model.cameras)
-        focal_length_x, focal_length_y, c_x, c_y = model.cameras[1].params[:4]
-        colmap_K = np.eye(3)
-        colmap_K[0, 0] = focal_length_x
-        colmap_K[1, 1] = focal_length_y
-        colmap_K[0, 2] = c_x
-        colmap_K[1, 2] = c_y
+        (focal_length_x, focal_length_y, c_x, c_y, k_1, k_2, p_1,
+         p_2) = model.cameras[1].params
+        self.colmap_K = np.eye(3)
+        self.colmap_K[0, 0] = focal_length_x
+        self.colmap_K[1, 1] = focal_length_y
+        self.colmap_K[0, 2] = c_x
+        self.colmap_K[1, 2] = c_y
+        self.colmap_distortion_params = np.array([k_1, k_2, p_1, p_2])
         np.savetxt(fname=os.path.join(colmap_output_dir,
                                       'intrinsics_colmap.txt'),
-                   X=colmap_K)
+                   X=self.colmap_K)
+        np.savetxt(fname=os.path.join(colmap_output_dir,
+                                      'distortion_parameters.txt'),
+                   X=self.colmap_distortion_params)
+
+    def _undistort_images(self):
+        print("Undistorting images according to the estimated intrinsics...")
+        undistorted_image_folder = os.path.join(self.scene.path,
+                                                "rgb_undistorted")
+        undistorted_depth_folder = os.path.join(self.scene.path,
+                                                "depth_undistorted")
+        os.makedirs(undistorted_image_folder, exist_ok=False)
+        os.makedirs(undistorted_depth_folder, exist_ok=False)
+
+        image_undistorter = ImageUndistorter(K=self.colmap_K,
+                                             D=self.colmap_distortion_params,
+                                             H=self.scene.camera.size[1],
+                                             W=self.scene.camera.size[0])
+        # Undistort all the images and save the undistorted version.
+        image_paths = self.scene.rgb_paths()
+        depth_paths = self.scene.depth_paths()
+
+        for image_path in image_paths:
+            image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            undistorted_image = image_undistorter.undistort_image(image=image)
+            cv2.imwrite(img=undistorted_image,
+                        filename=os.path.join(undistorted_image_folder,
+                                              os.path.basename(image_path)))
+        for depth_path in depth_paths:
+            depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+            undistorted_depth = image_undistorter.undistort_image(image=depth)
+            cv2.imwrite(img=undistorted_depth,
+                        filename=os.path.join(undistorted_depth_folder,
+                                              os.path.basename(depth_path)))
 
     def run(self):
         self._run_sfm()
+        self._undistort_images()
 
 
 class ScaleEstimation:

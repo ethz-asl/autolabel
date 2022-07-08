@@ -69,6 +69,9 @@ pushd torch_ngp
 pip install -e .
 bash scripts/install_ext.sh
 popd
+
+pip install torch-scatter -f https://data.pyg.org/whl/torch-1.12.0+cu116.html
+
 pip install -e .
 ```
 
