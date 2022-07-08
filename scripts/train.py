@@ -25,6 +25,11 @@ def read_args():
     parser.add_argument('--iters', type=int, default=10000)
     parser.add_argument('--workers', '-w', type=int, default=1)
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument(
+        '--workspace',
+        type=str,
+        default=None,
+        help="Save results in this directory instead of the scene directory.")
     return parser.parse_args()
 
 
@@ -78,13 +83,13 @@ def main():
         optimizer, gamma=gamma, step_size=step_size)
 
     epochs = int(np.ceil(flags.iters / 1000))
-    workspace = os.path.join(flags.scene, 'nerf', model_utils.model_hash(flags))
-    write_params(workspace, flags)
+    model_dir = model_utils.model_dir(flags.scene, flags)
+    write_params(model_dir, flags)
     trainer = SimpleTrainer('ngp',
                             opt,
                             model,
                             device='cuda:0',
-                            workspace=workspace,
+                            workspace=model_dir,
                             optimizer=optimizer,
                             criterion=criterion,
                             fp16=True,

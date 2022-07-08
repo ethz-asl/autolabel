@@ -12,13 +12,22 @@ def read_args():
     parser.add_argument('scenes', nargs='+')
     parser.add_argument('--batch-size', default=8182, type=int)
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--workspace', type=str, default=None)
     return parser.parse_args()
 
 
-def gather_models(scenes):
+def get_nerf_dir(scene, flags):
+    scene_name = os.path.basename(os.path.normpath(scene))
+    if flags.workspace is None:
+        return os.path.join(scene, 'nerf')
+    else:
+        return os.path.join(flags.workspace, scene_name)
+
+
+def gather_models(flags):
     models = set()
-    for scene in scenes:
-        nerf_dir = os.path.join(scene, 'nerf')
+    for scene in flags.scenes:
+        nerf_dir = get_nerf_dir(scene, flags)
         if not os.path.exists(nerf_dir):
             continue
         for model in os.listdir(nerf_dir):
@@ -34,7 +43,7 @@ def read_params(workspace):
 
 
 def main(flags):
-    models = gather_models(flags.scenes)
+    models = gather_models(flags)
     ious = np.zeros((len(flags.scenes), len(models)))
     classes = ["Background", "Class 1"]
     scene_names = [os.path.basename(os.path.normpath(p)) for p in flags.scenes]
@@ -42,7 +51,7 @@ def main(flags):
         print(f"Evaluating scene {scene}")
         scene_name = scene_names[scene_index]
 
-        nerf_dir = os.path.join(scene, 'nerf')
+        nerf_dir = get_nerf_dir(scene, flags)
         models = os.listdir(nerf_dir)
 
         for model_hash in models:
