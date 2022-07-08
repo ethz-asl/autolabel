@@ -64,6 +64,7 @@ class HLoc:
                                         self.matches,
                                         image_list=image_list_path,
                                         camera_mode=pycolmap.CameraMode.SINGLE,
+                                        camera_model="OPENCV",
                                         ba_refine_principal_point=True)
         else:
             retrieval_path = extract_features.main(self.retrieval_conf,
@@ -89,6 +90,7 @@ class HLoc:
                                         match_path,
                                         image_list=image_list_path,
                                         camera_mode=pycolmap.CameraMode.SINGLE,
+                                        camera_model="OPENCV",
                                         ba_refine_principal_point=True)
 
         if self.flags.vis:
@@ -106,10 +108,10 @@ class HLoc:
 
         # Save the intrinsics matrix, ignoring distortion parameter.
         assert (len(model.cameras) == 1 and 1 in model.cameras)
-        focal_length, c_x, c_y = model.cameras[1].params[:3]
+        focal_length_x, focal_length_y, c_x, c_y = model.cameras[1].params[:4]
         colmap_K = np.eye(3)
-        colmap_K[0, 0] = focal_length
-        colmap_K[1, 1] = focal_length
+        colmap_K[0, 0] = focal_length_x
+        colmap_K[1, 1] = focal_length_y
         colmap_K[0, 2] = c_x
         colmap_K[1, 2] = c_y
         np.savetxt(fname=os.path.join(colmap_output_dir,

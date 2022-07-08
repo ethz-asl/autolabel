@@ -60,6 +60,7 @@ Install into your desired python environment with the following commands:
 ```
 git clone --recursive https://github.com/francescomilano172/Hierarchical-Localization
 pushd Hierarchical-Localization/
+git checkout feature/arbitrary_camera_model
 python -m pip install -e .
 popd
 
