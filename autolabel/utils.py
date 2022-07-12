@@ -1,6 +1,7 @@
-import os
 import cv2
 import numpy as np
+import os
+
 from torch_ngp.nerf.network_ff import NeRFNetwork
 
 
@@ -44,7 +45,9 @@ class Scene:
     def __init__(self, scene_path):
         self.path = scene_path
         self.rgb_path = os.path.join(scene_path, 'rgb')
+        self.raw_rgb_path = os.path.join(scene_path, 'raw_rgb')
         self.depth_path = os.path.join(scene_path, 'depth')
+        self.raw_depth_path = os.path.join(scene_path, 'raw_depth')
         self.pose_path = os.path.join(scene_path, 'pose')
         self._read_poses()
         intrinsics_path = os.path.join(scene_path, 'intrinsics.txt')
@@ -52,9 +55,13 @@ class Scene:
         self.camera = Camera.from_path(intrinsics_path, image_size)
 
     def _peak_image_size(self):
-        image = cv2.imread(
-            os.path.join(self.rgb_path,
-                         os.listdir(self.rgb_path)[0]))
+        if os.path.exists(self.raw_rgb_path):
+            path = self.raw_rgb_path
+        elif os.path.exists(self.rgb_path):
+            path = self.rgb_path
+        else:
+            raise ValueError("Doesn't appear to be a valid scene.")
+        image = cv2.imread(os.path.join(path, os.listdir(path)[0]))
         return (image.shape[1], image.shape[0])
 
     def _read_poses(self):
@@ -78,15 +85,22 @@ class Scene:
     def __len__(self):
         return len(self.poses)
 
+    def _get_paths(self, directory):
+        frames = os.listdir(directory)
+        frames = sorted(frames, key=lambda x: int(x.split('.')[0]))
+        return [os.path.join(directory, f) for f in frames]
+
     def rgb_paths(self):
-        rgb_frames = os.listdir(self.rgb_path)
-        rgb_frames = sorted(rgb_frames, key=lambda x: int(x.split('.')[0]))
-        return [os.path.join(self.rgb_path, f) for f in rgb_frames]
+        return self._get_paths(self.rgb_path)
 
     def depth_paths(self):
-        depth_frames = os.listdir(self.depth_path)
-        depth_frames = sorted(depth_frames, key=lambda x: int(x.split('.')[0]))
-        return [os.path.join(self.depth_path, d) for d in depth_frames]
+        return self._get_paths(self.depth_path)
+
+    def raw_rgb_paths(self):
+        return self._get_paths(self.raw_rgb_path)
+
+    def raw_depth_paths(self):
+        return self._get_paths(self.raw_depth_path)
 
     def image_names(self):
         """
@@ -98,6 +112,16 @@ class Scene:
 
     def bbox(self):
         return np.loadtxt(os.path.join(self.path, 'bbox.txt'))[:6]
+
+    def depth_size(self):
+        """
+        Return: the size (width, height) of the depth images.
+        """
+        depth_paths = self.raw_depth_paths()
+        if len(depth_paths) == 0:
+            depth_paths = self.depth_paths()
+        image = cv2.imread(depth_paths[0], -1)
+        return (image.shape[1], image.shape[0])
 
 
 def transform_points(T, points):

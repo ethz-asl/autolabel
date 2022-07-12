@@ -12,14 +12,16 @@ Run the user interface with `python scripts/gui.py <scene>`
 
 The scene directory structure is as follows:
 ```
-rgb/            # Color frames either as png or jpg.
+rgb/            # Undistorted color frames either as png or jpg.
   00000.jpg
   00001.jpg
   ...
+raw_rgb/        # Raw distorted color frames.
 depth/          # 16 bit grayscale png images where values are in millimeters.
-  00000.png         # Depth frames might be smaller in size than the rgb frames.
-  00001.png
+  00000.png     # Depth frames might be smaller in size than the rgb frames.
+  00001.png     # Undistorted to match a perfect pinhole camera model.
   ...
+raw_depth/      # Raw original distorted depth frames.
 pose/
   00000.txt         # 4 x 4 world to camera transform.
   00001.txt
@@ -69,6 +71,9 @@ pushd torch_ngp
 pip install -e .
 bash scripts/install_ext.sh
 popd
+
+pip install torch-scatter -f https://data.pyg.org/whl/torch-1.12.0+cu113.html
+
 pip install -e .
 ```
 
