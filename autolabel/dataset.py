@@ -291,7 +291,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
     def _compute_image_mask(self, images):
         """
         From a few rgb images, determine which pixels should be sampled.
-        If pixels are black in all frames, assume they are ones
+        If pixels are black in all frames, assume they are due to undistortion.
         """
         if isinstance(images, LazyImageLoader):
             images = np.random.randint(0, len(images), count=5)
