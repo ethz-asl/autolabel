@@ -84,7 +84,7 @@ inside a scene directory, to annotate the frames in the `rgb` folder. Correspond
 
 To compute the intersection-over-union agreement against the manually annotated frames, run:
 ```
-python scripts/evaluate.pt <scene1> <scene2> # ...
+python scripts/evaluate.py <scene1> <scene2> # ...
 ```
 
 ## Code formatting
