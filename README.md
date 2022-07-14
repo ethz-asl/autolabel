@@ -28,11 +28,11 @@ semantic/         # Ground truth semantic annotations provided by user.
   00010.png       # These might not exist.
   00150.png
 gt_masks/         # Optional
-  10.json         # Dense ground truth masks used for evaluation.
-  150.json        # Used e.g. by scripts/evaluate.py
-intrinsics.txt  # 4 x 4 camera matrix.
-bbox.txt        # 6 values denoting the bounds of the scene (min_x, min_y, min_z, max_x, max_y, max_z).
-nerf/           # Contains NeRF checkpoints and training metadata.
+  00010.json      # Dense ground truth masks used for evaluation.
+  00150.json      # Used e.g. by scripts/evaluate.py
+intrinsics.txt    # 4 x 4 camera matrix.
+bbox.txt          # 6 values denoting the bounds of the scene (min_x, min_y, min_z, max_x, max_y, max_z).
+nerf/             # Contains NeRF checkpoints and training metadata.
 ```
 
 ## Computing camera poses
@@ -77,7 +77,7 @@ pip install -e .
 
 ## Evaluating against ground truth frames
 
-We use [labelme](https://github.com/wkentaro/labelme) to annotate ground truth frames. To annotate frames, run:
+We use [labelme](https://github.com/wkentaro/labelme) to annotate ground truth frames. Follow the installation instructions, using for instance a `conda` environment, and making sure that your Python version is `<3.10` to avoid type errors (see [here](https://github.com/wkentaro/labelme/issues/1020#issuecomment-1139749978)). To annotate frames, run:
 ```
 labelme rgb --nodata --autosave --output gt_masks
 ```
@@ -85,7 +85,7 @@ inside a scene directory, to annotate the frames in the `rgb` folder. Correspond
 
 To compute the intersection-over-union agreement against the manually annotated frames, run:
 ```
-python scripts/evaluate.pt <scene1> <scene2> # ...
+python scripts/evaluate.py <scene1> <scene2> # ...
 ```
 
 ## Code formatting

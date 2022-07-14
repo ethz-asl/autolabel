@@ -16,7 +16,7 @@ def load_checkpoint(model, checkpoint_dir, device='cuda:0'):
 def model_flag_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--lr', type=float, default=1e-2)
-    parser.add_argument('--geometric-features', '-g', type=int, default=31)
+    parser.add_argument('--geometric-features', '-g', type=int, default=15)
     parser.add_argument('--encoding',
                         default='hg',
                         choices=['hg', 'hg+freq'],

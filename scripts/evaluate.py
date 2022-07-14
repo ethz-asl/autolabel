@@ -67,6 +67,7 @@ def main(flags):
                 dataset.max_bounds,
                 encoding=params.encoding,
                 geometric_features=params.geometric_features).cuda()
+            model = model.eval()
 
             checkpoint_dir = os.path.join(model_path, 'checkpoints')
             model_utils.load_checkpoint(model, checkpoint_dir)

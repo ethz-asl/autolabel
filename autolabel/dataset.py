@@ -231,7 +231,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
             if self.lazy:
                 images.append(frame)
             else:
-                image = np.array(Image.open(frame), dtype=np.float32) / 255.
+                image = np.array(Image.open(frame),
+                                 dtype=np.float32)[..., :3] / 255.
                 image = cv2.resize(image,
                                    self.camera.size,
                                    interpolation=cv2.INTER_AREA)

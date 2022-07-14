@@ -226,8 +226,8 @@ class SceneViewer(QWidget):
             self.clear_image()
 
     def save(self):
-        for image_index in self._drawings.keys():
-            self._save_image(image_index)
+        for image_name in self._drawings.keys():
+            self._save_image(image_name)
         self.message_bus.save_checkpoint()
 
     def _save_image(self, image_name):
