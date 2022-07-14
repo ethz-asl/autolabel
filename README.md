@@ -12,14 +12,16 @@ Run the user interface with `python scripts/gui.py <scene>`
 
 The scene directory structure is as follows:
 ```
-rgb/              # Color frames either as png or jpg.
+rgb/            # Undistorted color frames either as png or jpg.
   00000.jpg
   00001.jpg
   ...
-depth/            # 16 bit grayscale png images where values are in millimeters.
-  00000.png       # Depth frames might be smaller in size than the rgb frames.
-  00001.png
+raw_rgb/        # Raw distorted color frames.
+depth/          # 16 bit grayscale png images where values are in millimeters.
+  00000.png     # Depth frames might be smaller in size than the rgb frames.
+  00001.png     # Undistorted to match a perfect pinhole camera model.
   ...
+raw_depth/      # Raw original distorted depth frames.
 pose/
   00000.txt       # 4 x 4 world to camera transform.
   00001.txt
@@ -38,12 +40,15 @@ nerf/             # Contains NeRF checkpoints and training metadata.
 ## Computing camera poses
 
 The script [`script/mapping.py`](script/mapping.py) defines a mapping pipeline which will compute camera poses for your scene. The required input files are:
-- `rgb/` images
-- `depth/` frames
+- `raw_rgb/` images
+- `raw_depth/` frames
 - `intrinsics.txt` camera intrinsic parameters
 
 The computed outputs are:
+- `rgb/` undistorted camera images
+- `depth/` undistorted depth images
 - `pose/` camera poses for each frame
+- `intrinsics.txt` inferred camera intrinsic parameters
 - `bbox.txt` scene bounds
 
 
@@ -62,8 +67,9 @@ conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
 Install into your desired python environment with the following commands:
 ```
 pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-git clone --recursive https://github.com/cvg/Hierarchical-Localization/
+git clone --recursive https://github.com/francescomilano172/Hierarchical-Localization
 pushd Hierarchical-Localization/
+git checkout feature/arbitrary_camera_model
 python -m pip install -e .
 popd
 
@@ -72,6 +78,9 @@ pushd torch_ngp
 pip install -e .
 bash scripts/install_ext.sh
 popd
+
+pip install torch-scatter -f https://data.pyg.org/whl/torch-1.12.0+cu113.html
+
 pip install -e .
 ```
 
