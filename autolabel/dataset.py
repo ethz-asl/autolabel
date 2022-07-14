@@ -12,6 +12,21 @@ CV_TO_OPENGL = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0],
                          [0.0, 0.0, -1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
 
 
+class LenDataset(torch.utils.data.IterableDataset):
+
+    def __init__(self, dataset, length):
+        self.dataset = dataset
+        self.length = length
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        for _ in range(self.length):
+            yield next(iterator)
+
+    def __len__(self):
+        return self.length
+
+
 class LazyImageLoader:
 
     def __init__(self, images, size):
@@ -166,7 +181,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
             depths[start:end] = self.depths[image_index][ray_indices] / 1000.0
             semantics[start:end] = self.semantics[image_index][
                 ray_indices].astype(int) - 1
-            ray_o[start:end] = self.origins[image_index][ray_indices]
+            ray_o[start:end] = np.broadcast_to(self.origins[image_index, None],
+                                               (ray_indices.shape[0], 3))
             ray_d[start:end] = self.directions[image_index][ray_indices]
         return {
             'rays_o': ray_o,
@@ -178,7 +194,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
     def _get_test(self, image_index):
         image = self.images[image_index].reshape(self.h, self.w, 3)
-        ray_o = self.origins[image_index].reshape(self.h, self.w, 3)
+        ray_o = np.broadcast_to(self.origins[image_index], (self.h, self.w, 3))
         ray_d = self.directions[image_index].reshape(self.h, self.w, 3)
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
@@ -209,7 +225,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
             if self.lazy:
                 images.append(frame)
             else:
-                image = np.array(Image.open(frame), dtype=np.float32) / 255.
+                image = np.array(Image.open(frame),
+                                 dtype=np.float32)[..., :3] / 255.
                 image = cv2.resize(image,
                                    self.camera.size,
                                    interpolation=cv2.INTER_AREA)
@@ -259,10 +276,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
         x, y = np.meshgrid(np.arange(self.w, dtype=np.float32) + pixel_center,
                            np.arange(self.h, dtype=np.float32) + pixel_center,
                            indexing='xy')
-        focal_x = self.camera.camera_matrix[0, 0]
-        focal_y = self.camera.camera_matrix[1, 1]
-        c_x = self.camera.camera_matrix[0, 2]
-        c_y = self.camera.camera_matrix[1, 2]
+        focal_x = self.camera.fx
+        focal_y = self.camera.fy
+        c_x = self.camera.cx
+        c_y = self.camera.cy
         camera_directions = np.stack([(x - c_x) / focal_x, (y - c_y) / focal_y,
                                       np.ones_like(x)],
                                      axis=-1)
@@ -270,10 +287,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
         camera_directions = camera_directions / np.linalg.norm(
             camera_directions, axis=-1)[:, :, None]
         camera_directions = camera_directions.reshape(-1, 3)  # R x 3
-        directions = camera_directions @ self.poses[:, :3, :3].transpose(
-            [0, 2, 1])
+        directions = (self.poses[:, None, :3, :3]
+                      @ camera_directions[None, :, :, None])[:, :, :, 0]
 
-        origins = np.broadcast_to(self.poses[:, None, :3, -1], directions.shape)
+        self.origins = self.poses[:, :3, -1]
 
         if self.split == "train":
             self.images = self.images.reshape(self.n_examples, self.resolution,
@@ -282,10 +299,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
             self.semantics = self.semantics.reshape(self.n_examples,
                                                     self.resolution)
         elif self.split == 'test':
-            origins = origins.reshape(self.n_examples, self.h, self.w, 3)
             directions = directions.reshape(self.n_examples, self.h, self.w, 3)
 
-        self.origins = origins
         self.directions = directions
 
     def _compute_image_mask(self, images):

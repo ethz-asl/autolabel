@@ -23,15 +23,18 @@ depth/          # 16 bit grayscale png images where values are in millimeters.
   ...
 raw_depth/      # Raw original distorted depth frames.
 pose/
-  00000.txt         # 4 x 4 world to camera transform.
+  00000.txt       # 4 x 4 world to camera transform.
   00001.txt
   ...
-semantic/       # Ground truth semantic annotations provided by user.
-  00010.png        # These might not exist.
+semantic/         # Ground truth semantic annotations provided by user.
+  00010.png       # These might not exist.
   00150.png
-intrinsics.txt  # 4 x 4 camera matrix.
-bbox.txt        # 6 values denoting the bounds of the scene (min_x, min_y, min_z, max_x, max_y, max_z).
-nerf/           # Contains NeRF checkpoints and training metadata.
+gt_masks/         # Optional
+  00010.json      # Dense ground truth masks used for evaluation.
+  00150.json      # Used e.g. by scripts/evaluate.py
+intrinsics.txt    # 4 x 4 camera matrix.
+bbox.txt          # 6 values denoting the bounds of the scene (min_x, min_y, min_z, max_x, max_y, max_z).
+nerf/             # Contains NeRF checkpoints and training metadata.
 ```
 
 ## Computing camera poses
@@ -75,6 +78,19 @@ popd
 pip install torch-scatter -f https://data.pyg.org/whl/torch-1.12.0+cu113.html
 
 pip install -e .
+```
+
+## Evaluating against ground truth frames
+
+We use [labelme](https://github.com/wkentaro/labelme) to annotate ground truth frames. Follow the installation instructions, using for instance a `conda` environment, and making sure that your Python version is `<3.10` to avoid type errors (see [here](https://github.com/wkentaro/labelme/issues/1020#issuecomment-1139749978)). To annotate frames, run:
+```
+labelme rgb --nodata --autosave --output gt_masks
+```
+inside a scene directory, to annotate the frames in the `rgb` folder. Corresponding annotations will be saved into the `gt_masks` folder. You don't need to annotate every single frame, but can sample just a few.
+
+To compute the intersection-over-union agreement against the manually annotated frames, run:
+```
+python scripts/evaluate.py <scene1> <scene2> # ...
 ```
 
 ## Code formatting

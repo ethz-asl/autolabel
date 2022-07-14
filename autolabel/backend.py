@@ -6,7 +6,7 @@ from PIL import Image
 from torch import optim
 from autolabel.trainer import SimpleTrainer, InteractiveTrainer
 from autolabel.dataset import SceneDataset
-from autolabel.utils import create_model
+from autolabel.model_utils import create_model
 
 
 class TrainingLoop:
@@ -18,7 +18,8 @@ class TrainingLoop:
                                           scene,
                                           factor=4.0,
                                           batch_size=flags.batch_size)
-        self.model = create_model(self.train_dataset)
+        self.model = create_model(self.train_dataset.min_bounds,
+                                  self.train_dataset.max_bounds)
         self.optimizer = lambda model: torch.optim.Adam([
             {
                 'name': 'encoding',
@@ -88,6 +89,8 @@ class TrainingLoop:
                 self._update_image(data)
             elif message_type == 'get_image':
                 get_image_message = data
+            elif message_type == 'checkpoint':
+                self._save_checkpoint()
 
         if get_image_message is not None:
             # Only the latest image request is relevant.
@@ -112,6 +115,17 @@ class TrainingLoop:
 
     def _update_image(self, image_index):
         self.train_dataset.semantic_map_updated(image_index)
+
+    def _save_checkpoint(self):
+        checkpoint_path = os.path.join(self.train_dataset.scene.path, 'nerf',
+                                       'checkpoints')
+        name = self.trainer.name
+        checkpoint_path = os.path.join(checkpoint_path, f"{name}.pth")
+        state = {}
+        state['model'] = self.model.state_dict()
+        state['optimizer'] = self.trainer.optimizer.state_dict()
+        state['scaler'] = self.trainer.scaler.state_dict()
+        torch.save(state, checkpoint_path)
 
     def _to_tensor(self, data):
         dtype = torch.float32
