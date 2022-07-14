@@ -129,7 +129,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.batch_size = batch_size
         self.scene = Scene(scene)
         self.image_names = self.scene.image_names()
-        self.index_sampler = IndexSampler()
+        self.pixel_indices = None
+        self.index_sampler = None
         camera = self.scene.camera
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
@@ -163,7 +164,6 @@ class SceneDataset(torch.utils.data.IterableDataset):
         ray_o = np.zeros((batch_size, 3), dtype=np.float32)
         ray_d = np.zeros((batch_size, 3), dtype=np.float32)
 
-        sampled_indices = np.random.randint(0, self.resolution, (batch_size,))
         for chunk in range(chunks):
             if self.index_sampler.has_semantics and random.random(
             ) < self.semantic_image_sample_ratio:
@@ -172,8 +172,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
                     class_id, self.sample_chunk_size)
             else:
                 image_index = np.random.randint(0, self.n_examples)
-                ray_indices = np.random.randint(0, self.resolution,
-                                                (self.sample_chunk_size,))
+                ray_indices = np.random.choice(self.pixel_indices,
+                                               size=(self.sample_chunk_size,))
             start = chunk * self.sample_chunk_size
             end = (chunk + 1) * self.sample_chunk_size
 
@@ -260,7 +260,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
         self.depths = np.stack(depths)
         self.semantics = np.stack(semantics)
+        self.index_sampler = IndexSampler()
         self.index_sampler.update(self.semantics.reshape(-1, self.resolution))
+        self._compute_image_mask(images)
         self.poses = np.stack(cameras, axis=0)
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
@@ -300,6 +302,20 @@ class SceneDataset(torch.utils.data.IterableDataset):
             directions = directions.reshape(self.n_examples, self.h, self.w, 3)
 
         self.directions = directions
+
+    def _compute_image_mask(self, images):
+        """
+        From a few rgb images, determine which pixels should be sampled.
+        If pixels are black in all frames, assume they are due to undistortion.
+        """
+        if isinstance(images, LazyImageLoader):
+            images = np.random.randint(0, len(images), count=5)
+        else:
+            images = images[::10]
+        where_non_zero = np.all(images != np.zeros((3,), dtype=np.float32),
+                                axis=3)
+        where_non_zero = np.all(where_non_zero, axis=0).reshape(-1)
+        self.pixel_indices = np.argwhere(where_non_zero).ravel()
 
     def semantic_map_updated(self, image_index):
         filename = f"{self.image_names[image_index]}.png"
