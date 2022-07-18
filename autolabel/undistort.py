@@ -84,6 +84,14 @@ def _iterative_camera_undistortion(
     return u_transformed, v_transformed
 
 
+@jit(nopython=True)
+def _undistort(K: np.ndarray, D: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    out = np.zeros((grid.shape[0], 2), dtype=np.float64)
+    for i in range(grid.shape[0]):
+        out[i, :] = _iterative_camera_undistortion(K, D, grid[i, 0], grid[i, 1])
+    return out
+
+
 class ImageUndistorter:
     """Implements functions to undistort images given OpenCV intrinsics
     estimated by COLMAP. This way, the undistorted images can be used with the
@@ -129,12 +137,9 @@ class ImageUndistorter:
         u_transformed = np.empty([self._H, self._W])
         v_transformed = np.empty([self._H, self._W])
 
-        res = np.array([
-            _iterative_camera_undistortion(self._K, self._D, u, v)
-            for (u, v) in np.stack(
-                np.meshgrid(np.arange(self._W), np.arange(self._H))).reshape(
-                    2, -1).transpose()
-        ])
+        grid = np.stack(np.meshgrid(np.arange(self._W), np.arange(
+            self._H))).reshape(2, -1).transpose()
+        res = _undistort(self._K, self._D, grid)
 
         uv = np.stack(np.meshgrid(np.arange(self._W),
                                   np.arange(self._H))).reshape(2,
@@ -211,5 +216,4 @@ class ImageUndistorter:
                 ..., 1].astype(np.long),
             self._best_uv_for_given_output_pixel[has_output_pixel_corr_pixel][
                 ..., 0].astype(np.long)]
-
         return output_image
