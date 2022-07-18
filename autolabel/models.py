@@ -91,10 +91,26 @@ class ALNetwork(NeRFRenderer):
 
         self.hidden_dim_semantic = hidden_dim_semantic
         self.semantic_classes = semantic_classes
-        self.semantic_net = FFMLP(input_dim=self.geo_feat_dim + 1,
-                                  output_dim=semantic_classes,
-                                  hidden_dim=self.hidden_dim_semantic,
-                                  num_layers=self.num_layers)
+        self.semantic_features = tcnn.Network(
+            n_input_dims=self.geo_feat_dim,
+            n_output_dims=self.hidden_dim,
+            network_config={
+                "otype": "FullyFusedMLP",
+                "activation": "ReLU",
+                "output_activation": "ReLU",
+                "n_neurons": self.hidden_dim_semantic,
+                "n_hidden_layers": 1
+            })
+        self.semantic_out = tcnn.Network(
+            n_input_dims=self.hidden_dim + self.geo_feat_dim,
+            n_output_dims=semantic_classes,
+            network_config={
+                "otype": "FullyFusedMLP",
+                "activation": "ReLU",
+                "output_activation": "None",
+                "n_neurons": self.hidden_dim_semantic,
+                "n_hidden_layers": 2
+            })
 
     def _get_encoder(self, encoding):
         if encoding == 'hg':
@@ -124,7 +140,8 @@ class ALNetwork(NeRFRenderer):
 
         rgb = torch.sigmoid(h)
 
-        semantic = self.semantic_net(geo_feat)
+        features = self.semantic_features(geo_feat)
+        semantic = self.semantic_out(features)
         semantic = F.softmax(semantic, dim=-1)
 
         return sigma, rgb, semantic
@@ -189,7 +206,10 @@ class ALNetwork(NeRFRenderer):
             'params': self.color_net.parameters(),
             'lr': lr
         }, {
-            'params': self.semantic_net.parameters(),
+            'params': self.semantic_features.parameters(),
+            'lr': lr
+        }, {
+            'params': self.semantic_out.parameters(),
             'lr': lr
         }]
         if self.bg_radius > 0:
@@ -198,19 +218,21 @@ class ALNetwork(NeRFRenderer):
 
         return params
 
-    def semantic(self, features, sigma):
+    def semantic(self, geo_features, sigma):
         """
         features: [N, D] geometric features
         sigma: [N, 1] density outputs
         returns: [N, C] semantic head outputs
         """
-        zeros = torch.zeros_like(sigma)
-        features = torch.cat([features, zeros], dim=-1)
-        return self.semantic_net(features)
+        features = self.semantic_features(geo_features)
+        features = torch.cat([features, geo_features], dim=1)
+        return self.semantic_out(features), features
 
     def network_parameters(self):
         """
         return: list of parameters in the neural networks, excluding encoder parameters
         """
-        return list(self.sigma_net.parameters()) + list(
-            self.color_net.parameters()) + list(self.semantic_net.parameters())
+        return (list(self.sigma_net.parameters()) +
+                list(self.color_net.parameters()) +
+                list(self.semantic_features.parameters()) +
+                list(self.semantic_out.parameters()))

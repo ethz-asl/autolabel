@@ -22,6 +22,7 @@ INFERENCE_UPDATE_INTERVAL = 5000
 
 def read_args():
     parser = model_utils.model_flag_parser()
+    parser.set_defaults(lr=1e-4)
     parser.add_argument('scene')
     parser.add_argument('--batch-size', type=int, default=4096)
     parser.add_argument('--dry',

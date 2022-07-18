@@ -47,6 +47,7 @@ class SimpleTrainer(Trainer):
         gt_rgb = data['pixels'].to(self.device)  # [B, 3]
         gt_depth = data['depth'].to(self.device)  # [B, 3]
         gt_semantic = data['semantic'].to(self.device)
+        gt_features = data['features'].to(self.device)
         has_semantic = gt_semantic >= 0
         use_semantic_loss = has_semantic.sum() > 0
 
@@ -66,6 +67,10 @@ class SimpleTrainer(Trainer):
         depth_loss = has_depth * torch.abs(pred_depth - gt_depth)
 
         loss = loss.mean() + self.depth_weight * depth_loss.mean()
+
+        p_features = outputs['semantic_features']
+        loss += F.mse_loss(p_features, gt_features[:, :p_features.shape[1]])
+
         pred_semantic = outputs['semantic']
         if use_semantic_loss.item():
             sem_loss = F.cross_entropy(pred_semantic[has_semantic, :],

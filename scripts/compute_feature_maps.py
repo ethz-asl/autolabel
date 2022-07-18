@@ -3,6 +3,7 @@ import h5py
 import numpy as np
 import os
 import pickle
+import math
 from PIL import Image
 import torch
 from torchvision import transforms
@@ -34,19 +35,23 @@ def extract_features(model, scene, output_file):
                                          compression='lzf')
     features = []
     with torch.inference_mode():
-        for i, rgb in enumerate(tqdm(paths)):
-            image = read_image(rgb)
-            image = F.interpolate(image[None], scale_factor=0.5).cuda()
+        batch_size = 8
+        for i in tqdm(range(math.ceil(len(paths) / batch_size))):
+            batch = paths[i * batch_size:(i + 1) * batch_size]
+            image = torch.stack([read_image(p) for p in batch]).cuda()
+            image = F.interpolate(image, scale_factor=0.5)
             batch = normalize(image / 255.)
             out = model(batch)
+
             f_small = out['features_small'][:, :64]
             f_large = out['features_large'][:, :64]
             f_small = F.interpolate(f_small,
                                     f_large.shape[-2:],
                                     mode='bilinear')
-            features = torch.cat([f_small[0], f_large[0]],
-                                 dim=0).detach().cpu().half().numpy()
-            dataset[i] = features.transpose([1, 2, 0])
+            features = torch.cat([f_small, f_large],
+                                 dim=1).detach().cpu().half().numpy()
+            dataset[i * batch_size:(i + 1) * batch_size] = features.transpose(
+                [0, 2, 3, 1])
 
     N, H, W, C = dataset[:].shape
     X = dataset[:].reshape(N * H * W, C)
@@ -81,7 +86,9 @@ def main():
     flags = read_args()
 
     scene = Scene(flags.scene)
-    output_file = h5py.File(os.path.join(scene.path, 'features.hdf'), 'w')
+    output_file = h5py.File(os.path.join(scene.path, 'features.hdf'),
+                            'w',
+                            libver='latest')
     group = output_file.create_group('features')
 
     model = fcn_resnet50(pretrained=True)

@@ -18,7 +18,8 @@ class TrainingLoop:
         self.train_dataset = SceneDataset('train',
                                           scene,
                                           factor=4.0,
-                                          batch_size=flags.batch_size)
+                                          batch_size=flags.batch_size,
+                                          features=True)
         self.model = model_utils.create_model(
             self.train_dataset.min_bounds,
             self.train_dataset.max_bounds,

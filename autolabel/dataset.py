@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import pickle
 import random
+import h5py
 from PIL import Image
 from autolabel.utils import Scene
 from torch_ngp.nerf.provider import nerf_matrix_to_ngp
@@ -129,7 +130,13 @@ class IndexSampler:
 class SceneDataset(torch.utils.data.IterableDataset):
     semantic_image_sample_ratio = 0.5
 
-    def __init__(self, split, scene, factor=4.0, batch_size=4096, lazy=False):
+    def __init__(self,
+                 split,
+                 scene,
+                 factor=4.0,
+                 batch_size=4096,
+                 lazy=False,
+                 features=False):
         self.lazy = lazy
         self.split = split
         self.batch_size = batch_size
@@ -137,6 +144,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.image_names = self.scene.image_names()
         self.pixel_indices = None
         self.index_sampler = None
+        self.features = None
         camera = self.scene.camera
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
@@ -150,6 +158,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
         ])
         self._load_images()
         self._compute_rays()
+        if features:
+            self._load_features()
         self.error_map = None
         self.sample_chunk_size = 32
 
@@ -169,6 +179,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
         semantics = np.zeros(batch_size, dtype=int)
         ray_o = np.zeros((batch_size, 3), dtype=np.float32)
         ray_d = np.zeros((batch_size, 3), dtype=np.float32)
+        features = np.zeros((batch_size, self.features.shape[-1]),
+                            dtype=np.float32)
 
         for chunk in range(chunks):
             if self.index_sampler.has_semantics and random.random(
@@ -190,12 +202,20 @@ class SceneDataset(torch.utils.data.IterableDataset):
             ray_o[start:end] = np.broadcast_to(self.origins[image_index, None],
                                                (ray_indices.shape[0], 3))
             ray_d[start:end] = self.directions[image_index][ray_indices]
+            x = ray_indices % int(self.camera.size[1])
+            y = (ray_indices - x) / int(self.camera.size[0])
+            xy = np.stack([x, y], axis=-1)
+            xy_features = self._scale_to_feature_xy(xy)
+
+            index = xy_features[:, 1] * self.feature_width + xy_features[:, 0]
+            features[start:end] = self.features[image_index, index, :]
         return {
             'rays_o': ray_o,
             'rays_d': ray_d,
             'pixels': pixels,
             'depth': depths,
-            'semantic': semantics
+            'semantic': semantics,
+            'features': features
         }
 
     def _get_test(self, image_index):
@@ -313,6 +333,18 @@ class SceneDataset(torch.utils.data.IterableDataset):
                                                     self.resolution)
 
         self.directions = directions
+
+    def _load_features(self):
+        with h5py.File(os.path.join(self.scene.path, 'features.hdf'),
+                       'r') as hdf:
+            features = hdf['features/fcn_resnet50'][:]
+            N, H, W, C = features.shape
+            self.features = features.reshape(N, H * W, C)
+            self.feature_width = W
+            self.feature_height = H
+        scale_factor = np.array(
+            [W / self.camera.size[0], H / self.camera.size[1]])
+        self._scale_to_feature_xy = lambda xy: (xy * scale_factor).astype(int)
 
     def _compute_image_mask(self, images):
         """
