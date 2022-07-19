@@ -30,7 +30,7 @@ def extract_features(model, scene, output_file):
     paths = scene.rgb_paths()
 
     dataset = output_file.create_dataset('fcn_resnet50',
-                                         (len(paths), 180, 240, 128),
+                                         (len(paths), 180, 240, 64),
                                          dtype=np.float16,
                                          compression='lzf')
     features = []
@@ -43,8 +43,8 @@ def extract_features(model, scene, output_file):
             batch = normalize(image / 255.)
             out = model(batch)
 
-            f_small = out['features_small'][:, :64]
-            f_large = out['features_large'][:, :64]
+            f_small = out['features_small'][:, :32]
+            f_large = out['features_large'][:, :32]
             f_small = F.interpolate(f_small,
                                     f_large.shape[-2:],
                                     mode='bilinear')
@@ -58,8 +58,14 @@ def extract_features(model, scene, output_file):
     pca = decomposition.PCA(n_components=3)
     indices = np.random.randint(0, X.shape[0], size=50000)
     subset = X[indices]
-    pca.fit(subset)
+    transformed = pca.fit_transform(subset)
+    minimum = transformed.min(axis=0)
+    maximum = transformed.max(axis=0)
+    diff = maximum - minimum
+
     dataset.attrs['pca'] = np.void(pickle.dumps(pca))
+    dataset.attrs['min'] = minimum
+    dataset.attrs['range'] = diff
 
 
 def visualize_features(features):
@@ -69,9 +75,6 @@ def visualize_features(features):
     indices = np.random.randint(0, X.shape[0], size=50000)
     subset = X[indices]
     transformed = pca.transform(subset)
-    minimum = transformed.min(axis=0)
-    maximum = transformed.max(axis=0)
-    diff = maximum - minimum
 
     from matplotlib import pyplot
     feature_maps = features[:]

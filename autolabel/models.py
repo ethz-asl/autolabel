@@ -80,14 +80,18 @@ class ALNetwork(NeRFRenderer):
                                              "otype": "SphericalHarmonics",
                                              "degree": 4
                                          })
-        self.color_features = self.encoder_dir.n_output_dims + self.geo_feat_dim + 1
+        self.color_features = self.encoder_dir.n_output_dims + self.geo_feat_dim
 
-        self.color_net = FFMLP(
-            input_dim=self.color_features,
-            output_dim=3,
-            hidden_dim=self.hidden_dim_color,
-            num_layers=self.num_layers_color,
-        )
+        self.color_net = tcnn.Network(
+            n_input_dims=self.color_features,
+            n_output_dims=3,
+            network_config={
+                "otype": "FullyFusedMLP",
+                "activation": "ReLU",
+                "output_activation": "None",
+                "n_neurons": self.hidden_dim_color,
+                "n_hidden_layers": self.num_layers_color
+            })
 
         self.hidden_dim_semantic = hidden_dim_semantic
         self.semantic_classes = semantic_classes
@@ -178,8 +182,7 @@ class ALNetwork(NeRFRenderer):
 
         d = self.encoder_dir(d)
 
-        p = torch.zeros_like(geo_feat[..., :1])  # manual input padding
-        h = torch.cat([d, geo_feat, p], dim=-1)
+        h = torch.cat([d, geo_feat], dim=-1)
 
         h = self.color_net(h)
 
@@ -224,9 +227,9 @@ class ALNetwork(NeRFRenderer):
         sigma: [N, 1] density outputs
         returns: [N, C] semantic head outputs
         """
-        features = self.semantic_features(geo_features)
-        features = torch.cat([features, geo_features], dim=1)
-        return self.semantic_out(features), features
+        sem_features = self.semantic_features(geo_features)
+        features = torch.cat([sem_features, geo_features], dim=1)
+        return self.semantic_out(features), sem_features
 
     def network_parameters(self):
         """

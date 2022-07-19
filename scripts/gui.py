@@ -55,7 +55,7 @@ class MessageBus:
         self.connection.send(('checkpoint', None))
 
 
-class ImagesView(QtWidgets.QGridLayout):
+class ImagesView(QtWidgets.QHBoxLayout):
 
     def __init__(self, canvas, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -74,24 +74,36 @@ class ImagesView(QtWidgets.QGridLayout):
         self.canvas.setSizePolicy(size_policy)
         self.rgb_view = QtWidgets.QLabel()
         self.depth_view = QtWidgets.QLabel()
+        self.feature_view = QtWidgets.QLabel()
         self.rgb_view.setScaledContents(True)
         self.depth_view.setScaledContents(True)
+        self.feature_view.setScaledContents(True)
         self.rgb_view.setSizePolicy(small_policy)
         self.depth_view.setSizePolicy(small_policy)
-        self.depth = QtGui.QPixmap(image_size[0], image_size[1])
-        self.color = QtGui.QPixmap(image_size[0], image_size[1])
-        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
-        self.color.fill(QtGui.QColor(0, 0, 0, 255))
-        self.depth_view.setPixmap(self.depth)
-        self.rgb_view.setPixmap(self.color)
+        self.feature_view.setSizePolicy(small_policy)
 
-        self.addWidget(canvas, 0, 0, 2, 1)
-        self.addWidget(self.rgb_view, 0, 1)
-        self.addWidget(self.depth_view, 1, 1)
+        self.color = QtGui.QPixmap(image_size[0], image_size[1])
+        self.depth = QtGui.QPixmap(image_size[0], image_size[1])
+        self.features = QtGui.QPixmap(image_size[0], image_size[1])
+        self.color.fill(QtGui.QColor(0, 0, 0, 255))
+        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
+        self.features.fill(QtGui.QColor(0, 0, 0, 255))
+        self.rgb_view.setPixmap(self.color)
+        self.depth_view.setPixmap(self.depth)
+        self.feature_view.setPixmap(self.features)
+
+        self.images_layout = QtWidgets.QVBoxLayout()
+        self.images_layout.addWidget(self.rgb_view)
+        self.images_layout.addWidget(self.depth_view)
+        self.images_layout.addWidget(self.feature_view)
+        self.addWidget(canvas)
+        self.addLayout(self.images_layout)
 
     def set_color(self, nparray):
         qimage = ImageQt(Image.fromarray((nparray * 255).astype(np.uint8)))
         self.color = QtGui.QPixmap.fromImage(qimage)
+        self.rgb_view.setPixmap(self.color)
+        self.rgb_view.repaint()
 
     def set_depth(self, nparray):
         normalized_depth = 1.0 - np.clip(nparray, 0.0, 10.0) / 10.0
@@ -99,15 +111,22 @@ class ImagesView(QtWidgets.QGridLayout):
             Image.fromarray(
                 (cm.inferno(normalized_depth) * 255).astype(np.uint8)))
         self.depth = QtGui.QPixmap.fromImage(qimage)
+        self.depth_view.setPixmap(self.depth)
+        self.depth_view.repaint()
+
+    def set_features(self, nparray):
+        qimage = ImageQt(Image.fromarray((nparray * 255).astype(np.uint8)))
+        self.features = QtGui.QPixmap.fromImage(qimage)
+        self.feature_view.setPixmap(self.features)
+        self.feature_view.repaint()
 
     def reset(self):
         self.color.fill(QtGui.QColor(0, 0, 0, 255))
-        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
-        self.update_images()
-
-    def update_images(self):
         self.rgb_view.setPixmap(self.color)
+        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
         self.depth_view.setPixmap(self.depth)
+        self.features.fill(QtGui.QColor(0, 0, 0, 255))
+        self.feature_view.setPixmap(self.features)
 
 
 class SceneViewer(QWidget):
@@ -181,9 +200,9 @@ class SceneViewer(QWidget):
         if payload['image_index'] != self.current_image_index:
             return
         self.canvas.set_inferred(payload['semantic'].numpy())
-        self.images_view.set_depth(payload['depth'].numpy())
         self.images_view.set_color(payload['rgb'].numpy())
-        self.images_view.update_images()
+        self.images_view.set_depth(payload['depth'].numpy())
+        self.images_view.set_features(payload['features'])
 
     def _canvas_callback(self):
         # Called when the mouse button is lifted on the canvas.

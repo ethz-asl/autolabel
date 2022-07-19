@@ -79,6 +79,26 @@ class SimpleTrainer(Trainer):
 
         return pred_rgb, gt_rgb, loss
 
+    def test_step(self, data):
+        rays_o = data['rays_o']  # [B, N, 3]
+        rays_d = data['rays_d']  # [B, N, 3]
+        H, W = data['H'], data['W']
+
+        outputs = self.model.render(rays_o,
+                                    rays_d,
+                                    staged=True,
+                                    perturb=False,
+                                    **vars(self.opt))
+
+        pred_rgb = outputs['image'].reshape(-1, H, W, 3)
+        pred_depth = outputs['depth'].reshape(-1, H, W)
+        pred_semantic = outputs['semantic']
+        pred_features = outputs['semantic_features']
+        _, _, C = pred_semantic.shape
+        pred_semantic = pred_semantic.reshape(-1, H, W, C)
+
+        return pred_rgb, pred_depth, pred_semantic, pred_features
+
     def eval_step(self, data):
         rays_o = data['rays_o'].to(self.device)  # [B, 3]
         rays_d = data['rays_d'].to(self.device)  # [B, 3]

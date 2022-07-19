@@ -1,6 +1,8 @@
 import os
 import torch
 import numpy as np
+import h5py
+import pickle
 from argparse import Namespace
 from PIL import Image
 from torch import optim
@@ -12,9 +14,11 @@ from autolabel import model_utils
 class TrainingLoop:
 
     def __init__(self, scene, flags, connection):
+        self.scene_path = scene
         self.flags = flags
         model_hash = model_utils.model_hash(flags)
         self.workspace = os.path.join(scene, 'nerf', model_hash)
+        self._load_pca()
         self.train_dataset = SceneDataset('train',
                                           scene,
                                           factor=4.0,
@@ -64,6 +68,14 @@ class TrainingLoop:
                                           metrics=[],
                                           use_checkpoint='latest')
 
+    def _load_pca(self):
+        with h5py.File(os.path.join(self.scene_path, 'features.hdf'), 'r') as f:
+            features = f['features/fcn_resnet50']
+            blob = features.attrs['pca'].tobytes()
+            self.pca = pickle.loads(blob)
+            self.feature_min = features.attrs['min']
+            self.feature_range = features.attrs['range']
+
     def _create_dataloader(self, dataset):
         loader = torch.utils.data.DataLoader(dataset,
                                              batch_size=None,
@@ -103,15 +115,26 @@ class TrainingLoop:
         with torch.no_grad():
             data = self._to_tensor(self.train_dataset._get_test(image_index))
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                p_rgb, p_depth, p_semantic = self.trainer.test_step(data)
+                p_rgb, p_depth, p_semantic, p_features = self.trainer.test_step(
+                    data)
+
         self.model.train()
         semantic = p_semantic[0].argmax(dim=-1).detach().cpu()
+
+        features = p_features.detach().cpu().numpy()
+        H, W, C = features.shape
+        features = self.pca.transform(features.reshape(H * W, C))
+        features = np.clip((features - self.feature_min) / self.feature_range,
+                           0., 1.)
+        features = features.reshape(H, W, 3)
+
         self.log(f"Sending {image_index}")
         self.connection.send(("image", {
             'image_index': image_index,
             'rgb': p_rgb[0].detach().cpu(),
             'depth': p_depth[0].detach().cpu(),
-            'semantic': semantic
+            'semantic': semantic,
+            'features': features
         }))
 
     def _update_image(self, image_index):
