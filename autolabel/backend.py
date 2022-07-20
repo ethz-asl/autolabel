@@ -23,7 +23,7 @@ class TrainingLoop:
                                           scene,
                                           factor=4.0,
                                           batch_size=flags.batch_size,
-                                          features=True)
+                                          features=self.flags.features)
         self.model = model_utils.create_model(
             self.train_dataset.min_bounds,
             self.train_dataset.max_bounds,
@@ -54,7 +54,9 @@ class TrainingLoop:
         scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(optimizer,
                                                                     factor=1.0)
 
-        opt = Namespace(rand_pose=-1, color_space='srgb')
+        opt = Namespace(rand_pose=-1,
+                        color_space='srgb',
+                        feature_loss=self.flags.features is not None)
         self.trainer = InteractiveTrainer('ngp',
                                           opt,
                                           self.model,
@@ -70,7 +72,7 @@ class TrainingLoop:
 
     def _load_pca(self):
         with h5py.File(os.path.join(self.scene_path, 'features.hdf'), 'r') as f:
-            features = f['features/fcn_resnet50']
+            features = f[f'features/fcn50']
             blob = features.attrs['pca'].tobytes()
             self.pca = pickle.loads(blob)
             self.feature_min = features.attrs['min']

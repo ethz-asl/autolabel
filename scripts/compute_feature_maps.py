@@ -29,11 +29,9 @@ def extract_features(model, scene, output_file):
                                      std=[0.229, 0.224, 0.225]).cuda()
     paths = scene.rgb_paths()
 
-    dataset = output_file.create_dataset('fcn_resnet50',
-                                         (len(paths), 180, 240, 64),
+    dataset = output_file.create_dataset('fcn50', (len(paths), 180, 240, 64),
                                          dtype=np.float16,
                                          compression='lzf')
-    features = []
     with torch.inference_mode():
         batch_size = 8
         for i in tqdm(range(math.ceil(len(paths) / batch_size))):
@@ -105,7 +103,7 @@ def main():
         })
     extract_features(extractor, scene, group)
     if flags.vis:
-        visualize_features(group['fcn_resnet50'])
+        visualize_features(group['fcn50'])
 
 
 if __name__ == "__main__":

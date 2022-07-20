@@ -15,18 +15,26 @@ def load_checkpoint(model, checkpoint_dir, device='cuda:0'):
 
 def model_flag_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lr', type=float, default=1e-2)
+    parser.add_argument('--lr', type=float, default=5e-3)
     parser.add_argument('--geometric-features', '-g', type=int, default=15)
     parser.add_argument('--encoding',
                         default='hg',
                         choices=['hg', 'hg+freq'],
                         type=str,
                         help="Network positional encoding to use.")
+    parser.add_argument('--features',
+                        type=str,
+                        default=None,
+                        choices=[None, 'fcn50'],
+                        help="Use semantic feature supervision.")
     return parser
 
 
 def model_hash(flags):
-    return f"g{flags.geometric_features}_{flags.encoding}"
+    features = 'plain'
+    if flags.features is not None:
+        features = flags.features
+    return f"g{flags.geometric_features}_{flags.encoding}_{features}"
 
 
 def model_dir(scene_path, flags):

@@ -54,7 +54,9 @@ def main():
         encoding=flags.encoding,
         geometric_features=flags.geometric_features)
 
-    opt = Namespace(rand_pose=-1, color_space='srgb')
+    opt = Namespace(rand_pose=-1,
+                    color_space='srgb',
+                    feature_loss=flags.features is not None)
 
     optimizer = lambda model: torch.optim.Adam([
         {

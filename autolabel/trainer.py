@@ -22,8 +22,9 @@ DEPTH_EPSILON = 0.01
 
 
 class SimpleTrainer(Trainer):
-    depth_weight = 0.05
-    semantic_weight = 0.25
+    depth_weight = 0.1
+    semantic_weight = 0.5
+    feature_weight = 0.25
 
     def train(self, dataloader, epochs):
         if self.use_tensorboardX and self.local_rank == 0:
@@ -47,7 +48,6 @@ class SimpleTrainer(Trainer):
         gt_rgb = data['pixels'].to(self.device)  # [B, 3]
         gt_depth = data['depth'].to(self.device)  # [B, 3]
         gt_semantic = data['semantic'].to(self.device)
-        gt_features = data['features'].to(self.device)
         has_semantic = gt_semantic >= 0
         use_semantic_loss = has_semantic.sum() > 0
 
@@ -68,8 +68,11 @@ class SimpleTrainer(Trainer):
 
         loss = loss.mean() + self.depth_weight * depth_loss.mean()
 
-        p_features = outputs['semantic_features']
-        loss += F.mse_loss(p_features, gt_features[:, :p_features.shape[1]])
+        if self.opt.feature_loss:
+            gt_features = data['features'].to(self.device)
+            p_features = outputs['semantic_features']
+            loss += self.feature_weight * F.l1_loss(
+                p_features, gt_features[:, :p_features.shape[1]])
 
         pred_semantic = outputs['semantic']
         if use_semantic_loss.item():

@@ -136,7 +136,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
                  factor=4.0,
                  batch_size=4096,
                  lazy=False,
-                 features=False):
+                 features=None):
         self.lazy = lazy
         self.split = split
         self.batch_size = batch_size
@@ -158,8 +158,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
         ])
         self._load_images()
         self._compute_rays()
-        if features:
-            self._load_features()
+        if features is not None:
+            self._load_features(features)
         self.error_map = None
         self.sample_chunk_size = 32
 
@@ -179,8 +179,18 @@ class SceneDataset(torch.utils.data.IterableDataset):
         semantics = np.zeros(batch_size, dtype=int)
         ray_o = np.zeros((batch_size, 3), dtype=np.float32)
         ray_d = np.zeros((batch_size, 3), dtype=np.float32)
-        features = np.zeros((batch_size, self.features.shape[-1]),
-                            dtype=np.float32)
+
+        out = {
+            'rays_o': ray_o,
+            'rays_d': ray_d,
+            'pixels': pixels,
+            'depth': depths,
+            'semantic': semantics,
+        }
+        if self.features is not None:
+            features = np.zeros((batch_size, self.features.shape[-1]),
+                                dtype=np.float32)
+            out['features'] = features
 
         for chunk in range(chunks):
             if self.index_sampler.has_semantics and random.random(
@@ -202,21 +212,18 @@ class SceneDataset(torch.utils.data.IterableDataset):
             ray_o[start:end] = np.broadcast_to(self.origins[image_index, None],
                                                (ray_indices.shape[0], 3))
             ray_d[start:end] = self.directions[image_index][ray_indices]
-            x = ray_indices % int(self.camera.size[1])
-            y = (ray_indices - x) / int(self.camera.size[0])
-            xy = np.stack([x, y], axis=-1)
-            xy_features = self._scale_to_feature_xy(xy)
 
-            index = xy_features[:, 1] * self.feature_width + xy_features[:, 0]
-            features[start:end] = self.features[image_index, index, :]
-        return {
-            'rays_o': ray_o,
-            'rays_d': ray_d,
-            'pixels': pixels,
-            'depth': depths,
-            'semantic': semantics,
-            'features': features
-        }
+            if self.features is not None:
+                x = ray_indices % int(self.camera.size[1])
+                y = (ray_indices - x) / int(self.camera.size[0])
+                xy = np.stack([x, y], axis=-1)
+                xy_features = self._scale_to_feature_xy(xy)
+
+                index = xy_features[:, 1] * self.feature_width + xy_features[:,
+                                                                             0]
+                features[start:end] = self.features[image_index, index, :]
+
+        return out
 
     def _get_test(self, image_index):
         image = self.images[image_index].reshape(self.h, self.w, 3)
@@ -334,10 +341,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
         self.directions = directions
 
-    def _load_features(self):
+    def _load_features(self, features):
         with h5py.File(os.path.join(self.scene.path, 'features.hdf'),
                        'r') as hdf:
-            features = hdf['features/fcn_resnet50'][:]
+            features = hdf[f'features/{features}'][:]
             N, H, W, C = features.shape
             self.features = features.reshape(N, H * W, C)
             self.feature_width = W
