@@ -46,7 +46,7 @@ def main():
                            flags.scene,
                            factor=flags.factor_train,
                            batch_size=flags.batch_size,
-                           features=True)
+                           features=flags.features)
 
     model = model_utils.create_model(
         dataset.min_bounds,

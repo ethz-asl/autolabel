@@ -29,7 +29,7 @@ def extract_features(model, scene, output_file):
                                      std=[0.229, 0.224, 0.225]).cuda()
     paths = scene.rgb_paths()
 
-    dataset = output_file.create_dataset('fcn50', (len(paths), 180, 240, 64),
+    dataset = output_file.create_dataset('fcn50', (len(paths), 180, 240, 128),
                                          dtype=np.float16,
                                          compression='lzf')
     with torch.inference_mode():
@@ -41,8 +41,8 @@ def extract_features(model, scene, output_file):
             batch = normalize(image / 255.)
             out = model(batch)
 
-            f_small = out['features_small'][:, :32]
-            f_large = out['features_large'][:, :32]
+            f_small = out['features_small'][:, :64]
+            f_large = out['features_large'][:, :64]
             f_small = F.interpolate(f_small,
                                     f_large.shape[-2:],
                                     mode='bilinear')

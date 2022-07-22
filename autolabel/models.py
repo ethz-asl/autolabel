@@ -49,7 +49,7 @@ class ALNetwork(NeRFRenderer):
                  geo_feat_dim=15,
                  num_layers_color=3,
                  hidden_dim_color=64,
-                 hidden_dim_semantic=64,
+                 hidden_dim_semantic=128,
                  semantic_classes=2,
                  bound=1,
                  **kwargs):
@@ -105,16 +105,16 @@ class ALNetwork(NeRFRenderer):
                 "n_neurons": self.hidden_dim_semantic,
                 "n_hidden_layers": 1
             })
-        self.semantic_out = tcnn.Network(
-            n_input_dims=self.hidden_dim + self.geo_feat_dim,
-            n_output_dims=semantic_classes,
-            network_config={
-                "otype": "FullyFusedMLP",
-                "activation": "ReLU",
-                "output_activation": "None",
-                "n_neurons": self.hidden_dim_semantic,
-                "n_hidden_layers": 2
-            })
+        self.semantic_out = tcnn.Network(n_input_dims=self.hidden_dim +
+                                         self.geo_feat_dim,
+                                         n_output_dims=semantic_classes,
+                                         network_config={
+                                             "otype": "FullyFusedMLP",
+                                             "activation": "ReLU",
+                                             "output_activation": "None",
+                                             "n_neurons": 64,
+                                             "n_hidden_layers": 2
+                                         })
 
     def _get_encoder(self, encoding):
         if encoding == 'hg':
