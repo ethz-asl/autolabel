@@ -27,6 +27,10 @@ def model_flag_parser():
                         default=None,
                         choices=[None, 'fcn50'],
                         help="Use semantic feature supervision.")
+    parser.add_argument('--rgb-weight', default=1.0, type=float)
+    parser.add_argument('--semantic-weight', default=1.0, type=float)
+    parser.add_argument('--feature-weight', default=1.0, type=float)
+    parser.add_argument('--depth-weight', default=0.05, type=float)
     return parser
 
 
@@ -34,7 +38,10 @@ def model_hash(flags):
     features = 'plain'
     if flags.features is not None:
         features = flags.features
-    return f"g{flags.geometric_features}_{flags.encoding}_{features}"
+    string = f"g{flags.geometric_features}_{flags.encoding}_{features}"
+    string += f"_rgb{flags.rgb_weight}_d{flags.depth_weight}_s{flags.semantic_weight}"
+    string += f"_f{flags.feature_weight}"
+    return string
 
 
 def model_dir(scene_path, flags):

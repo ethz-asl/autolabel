@@ -22,9 +22,6 @@ DEPTH_EPSILON = 0.01
 
 
 class SimpleTrainer(Trainer):
-    depth_weight = 0.1
-    semantic_weight = 0.5
-    feature_weight = 0.25
 
     def train(self, dataloader, epochs):
         if self.use_tensorboardX and self.local_rank == 0:
@@ -60,25 +57,25 @@ class SimpleTrainer(Trainer):
 
         pred_rgb = outputs['image']
 
-        loss = self.criterion(pred_rgb, gt_rgb).mean(-1)  # [B, N, 3] --> [B, N]
+        loss = self.opt.rgb_weight * self.criterion(pred_rgb, gt_rgb).mean()
 
         pred_depth = outputs['depth']
         has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
         depth_loss = has_depth * torch.abs(pred_depth - gt_depth)
 
-        loss = loss.mean() + self.depth_weight * depth_loss.mean()
+        loss = loss.mean() + self.opt.depth_weight * depth_loss.mean()
 
         if self.opt.feature_loss:
             gt_features = data['features'].to(self.device)
             p_features = outputs['semantic_features']
-            loss += self.feature_weight * F.l1_loss(
+            loss += self.opt.feature_weight * F.l1_loss(
                 p_features, gt_features[:, :p_features.shape[1]])
 
         pred_semantic = outputs['semantic']
         if use_semantic_loss.item():
             sem_loss = F.cross_entropy(pred_semantic[has_semantic, :],
                                        gt_semantic[has_semantic])
-            loss += self.semantic_weight * sem_loss
+            loss += self.opt.semantic_weight * sem_loss
 
         return pred_rgb, gt_rgb, loss
 
@@ -123,14 +120,14 @@ class SimpleTrainer(Trainer):
 
         loss = self.criterion(pred_rgb, gt_rgb).mean()
         has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
-        loss += self.depth_weight * (has_depth *
-                                     torch.abs(pred_depth - gt_depth)).mean()
+        loss += self.opt.depth_weight * (
+            has_depth * torch.abs(pred_depth - gt_depth)).mean()
 
         has_semantic = gt_semantic >= 0
         if has_semantic.sum().item() > 0:
             semantic_loss = F.cross_entropy(pred_semantic[has_semantic, :],
                                             gt_semantic[has_semantic])
-            loss += self.semantic_weight * semantic_loss
+            loss += self.opt.semantic_weight * semantic_loss
 
         pred_semantic = pred_semantic.reshape(H, W, pred_semantic.shape[-1])
 

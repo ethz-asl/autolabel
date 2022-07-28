@@ -302,7 +302,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.semantics = np.stack(semantics)
         self.index_sampler = IndexSampler()
         self.index_sampler.update(self.semantics.reshape(-1, self.resolution))
-        self._compute_image_mask(images)
+        self._compute_image_mask(self.images)
         self.poses = np.stack(cameras, axis=0)
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
@@ -359,7 +359,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
         If pixels are black in all frames, assume they are due to undistortion.
         """
         if isinstance(images, LazyImageLoader):
-            images = np.random.randint(0, len(images), count=5)
+            indices = np.random.randint(0, len(images), size=5)
+            images = np.stack([images[index] for index in indices])
         else:
             images = images[::10]
         where_non_zero = np.all(images != np.zeros((3,), dtype=np.float32),
