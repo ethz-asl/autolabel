@@ -2,6 +2,7 @@ import argparse
 import os
 import pickle
 import numpy as np
+import json
 from autolabel.evaluation import Evaluator
 from autolabel.dataset import SceneDataset, LenDataset
 from autolabel import utils, model_utils
@@ -13,6 +14,10 @@ def read_args():
     parser.add_argument('--batch-size', default=8182, type=int)
     parser.add_argument('--vis', action='store_true')
     parser.add_argument('--workspace', type=str, default=None)
+    parser.add_argument('--out',
+                        default=None,
+                        type=str,
+                        help="Where to write results as json, if anywhere.")
     return parser.parse_args()
 
 
@@ -42,14 +47,20 @@ def read_params(workspace):
         return pickle.load(f)
 
 
+def write_results(out, results):
+    with open(out, 'wt') as f:
+        f.write(json.dumps(results, indent=2))
+
+
 def main(flags):
     models = gather_models(flags)
     ious = np.zeros((len(flags.scenes), len(models)))
     classes = ["Background", "Class 1"]
     scene_names = [os.path.basename(os.path.normpath(p)) for p in flags.scenes]
+    results = []
     for scene_index, scene in enumerate(flags.scenes):
-        print(f"Evaluating scene {scene}")
         scene_name = scene_names[scene_index]
+        print(f"Evaluating scene {scene_name}")
 
         nerf_dir = get_nerf_dir(scene, flags)
         models = os.listdir(nerf_dir)
@@ -78,6 +89,13 @@ def main(flags):
             result = evaluator.eval(dataset, flags.vis)
             miou = np.mean([v for v in result.values()])
             ious[scene_index, model_index] = miou
+            result = dict(vars(params))
+            result['scene'] = scene_name
+            result['iou'] = miou
+            results.append(result)
+
+    if flags.out is not None:
+        write_results(flags.out, results)
 
     from rich.table import Table
     from rich.console import Console
