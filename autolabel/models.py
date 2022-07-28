@@ -97,7 +97,7 @@ class ALNetwork(NeRFRenderer):
         self.semantic_classes = semantic_classes
         self.semantic_features = tcnn.Network(
             n_input_dims=self.geo_feat_dim,
-            n_output_dims=self.hidden_dim,
+            n_output_dims=self.hidden_dim_semantic,
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
@@ -105,7 +105,7 @@ class ALNetwork(NeRFRenderer):
                 "n_neurons": self.hidden_dim_semantic,
                 "n_hidden_layers": 1
             })
-        self.semantic_out = tcnn.Network(n_input_dims=self.hidden_dim +
+        self.semantic_out = tcnn.Network(n_input_dims=self.hidden_dim_semantic +
                                          self.geo_feat_dim,
                                          n_output_dims=semantic_classes,
                                          network_config={
@@ -138,14 +138,13 @@ class ALNetwork(NeRFRenderer):
 
         d = self.encoder_dir(d)
 
-        p = torch.zeros_like(geo_feat[..., :1])
-        h = torch.cat([d, geo_feat, p], dim=-1)
+        h = torch.cat([d, geo_feat], dim=-1)
         h = self.color_net(h)
 
         rgb = torch.sigmoid(h)
 
         features = self.semantic_features(geo_feat)
-        semantic = self.semantic_out(features)
+        semantic = self.semantic_out(torch.cat([features, geo_feat], dim=-1))
         semantic = F.softmax(semantic, dim=-1)
 
         return sigma, rgb, semantic

@@ -4,14 +4,10 @@ import numpy as np
 import os
 import pickle
 import math
-from PIL import Image
 import torch
-from torchvision import transforms
-from torchvision.io.image import read_image
-from torchvision.models.segmentation import fcn_resnet50
-from torchvision.transforms.functional import to_pil_image
-from torchvision.models import feature_extraction
 from torch.nn import functional as F
+from torchvision.io.image import read_image
+from PIL import Image
 from autolabel.utils import Scene
 from sklearn import decomposition
 from tqdm import tqdm
@@ -21,15 +17,15 @@ def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--features', type=str, choices=['fcn50', 'dino'])
     return parser.parse_args()
 
 
-def extract_features(model, scene, output_file):
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225]).cuda()
+def extract_features(extractor, scene, output_file, flags):
     paths = scene.rgb_paths()
 
-    dataset = output_file.create_dataset('fcn50', (len(paths), 180, 240, 128),
+    dataset = output_file.create_dataset(flags.features,
+                                         (len(paths), *extractor.shape, 128),
                                          dtype=np.float16,
                                          compression='lzf')
     with torch.inference_mode():
@@ -38,16 +34,7 @@ def extract_features(model, scene, output_file):
             batch = paths[i * batch_size:(i + 1) * batch_size]
             image = torch.stack([read_image(p) for p in batch]).cuda()
             image = F.interpolate(image, scale_factor=0.5)
-            batch = normalize(image / 255.)
-            out = model(batch)
-
-            f_small = out['features_small'][:, :64]
-            f_large = out['features_large'][:, :64]
-            f_small = F.interpolate(f_small,
-                                    f_large.shape[-2:],
-                                    mode='bilinear')
-            features = torch.cat([f_small, f_large],
-                                 dim=1).detach().cpu().half().numpy()
+            features = extractor(image / 255.)
             dataset[i * batch_size:(i + 1) * batch_size] = features.transpose(
                 [0, 2, 3, 1])
 
@@ -83,6 +70,14 @@ def visualize_features(features):
         pyplot.show()
 
 
+def get_feature_extractor(features):
+    from autolabel.features import FCN50
+    if features == 'fcn50':
+        return FCN50()
+    else:
+        raise NotImplementedError()
+
+
 def main():
     flags = read_args()
 
@@ -92,16 +87,9 @@ def main():
                             libver='latest')
     group = output_file.create_group('features')
 
-    model = fcn_resnet50(pretrained=True)
-    model.eval()
-    model = model.cuda()
-    extractor = feature_extraction.create_feature_extractor(
-        model,
-        return_nodes={
-            'backbone.layer4.2.relu_2': 'features_small',
-            'backbone.layer1.2.relu_2': 'features_large'
-        })
-    extract_features(extractor, scene, group)
+    extractor = get_feature_extractor(flags.features)
+
+    extract_features(extractor, scene, group, flags)
     if flags.vis:
         visualize_features(group['fcn50'])
 
