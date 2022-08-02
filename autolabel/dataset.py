@@ -214,8 +214,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
             ray_d[start:end] = self.directions[image_index][ray_indices]
 
             if self.features is not None:
-                x = ray_indices % int(self.camera.size[1])
-                y = (ray_indices - x) / int(self.camera.size[0])
+                width = int(self.camera.size[0])
+                x = ray_indices % width
+                y = (ray_indices - x) / width
                 xy = np.stack([x, y], axis=-1)
                 xy_features = self._scale_to_feature_xy(xy)
 
