@@ -25,12 +25,13 @@ def model_flag_parser():
     parser.add_argument('--features',
                         type=str,
                         default=None,
-                        choices=[None, 'fcn50'],
+                        choices=[None, 'fcn50', 'dino'],
                         help="Use semantic feature supervision.")
     parser.add_argument('--rgb-weight', default=1.0, type=float)
     parser.add_argument('--semantic-weight', default=1.0, type=float)
     parser.add_argument('--feature-weight', default=1.0, type=float)
     parser.add_argument('--depth-weight', default=0.05, type=float)
+    parser.add_argument('--dropout', default=0.1, type=float)
     return parser
 
 
@@ -52,15 +53,17 @@ def model_dir(scene_path, flags):
     return os.path.join(flags.workspace, scene_name, mhash)
 
 
-def create_model(min_bounds, max_bounds, encoding='hg', geometric_features=31):
+def create_model(min_bounds, max_bounds, flags):
     extents = max_bounds - min_bounds
     bound = (extents - (min_bounds + max_bounds) * 0.5).max()
     return ALNetwork(num_layers=2,
                      num_layers_color=2,
                      hidden_dim_color=64,
                      hidden_dim=64,
-                     geo_feat_dim=geometric_features,
-                     encoding=encoding,
+                     geo_feat_dim=flags.geometric_features,
+                     encoding=flags.encoding,
                      bound=float(bound),
+                     dropout=flags.dropout,
+                     hidden_dim_semantic=64,
                      cuda_ray=False,
                      density_scale=1)

@@ -23,7 +23,7 @@ class FCN50:
 
     @property
     def shape(self):
-        return (180, 240)
+        return (180, 240, 128)
 
     def __call__(self, x):
         batch = self.normalize(x)
@@ -33,4 +33,5 @@ class FCN50:
         f_large = out['features_large'][:, :64]
         f_small = F.interpolate(f_small, f_large.shape[-2:], mode='bilinear')
         return torch.cat([f_small, f_large],
-                         dim=1).detach().cpu().half().numpy()
+                         dim=1).detach().cpu().half().numpy().transpose(
+                             [0, 2, 3, 1])

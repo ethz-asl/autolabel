@@ -49,7 +49,8 @@ class ALNetwork(NeRFRenderer):
                  geo_feat_dim=15,
                  num_layers_color=3,
                  hidden_dim_color=64,
-                 hidden_dim_semantic=128,
+                 hidden_dim_semantic=64,
+                 dropout=0.1,
                  semantic_classes=2,
                  bound=1,
                  **kwargs):
@@ -103,8 +104,9 @@ class ALNetwork(NeRFRenderer):
                 "activation": "ReLU",
                 "output_activation": "ReLU",
                 "n_neurons": self.hidden_dim_semantic,
-                "n_hidden_layers": 1
+                "n_hidden_layers": 2
             })
+        self.dropout = nn.Dropout(p=dropout, inplace=True)
         self.semantic_out = tcnn.Network(n_input_dims=self.hidden_dim_semantic +
                                          self.geo_feat_dim,
                                          n_output_dims=semantic_classes,
@@ -113,7 +115,7 @@ class ALNetwork(NeRFRenderer):
                                              "activation": "ReLU",
                                              "output_activation": "None",
                                              "n_neurons": 64,
-                                             "n_hidden_layers": 2
+                                             "n_hidden_layers": 1
                                          })
 
     def _get_encoder(self, encoding):
@@ -144,7 +146,8 @@ class ALNetwork(NeRFRenderer):
         rgb = torch.sigmoid(h)
 
         features = self.semantic_features(geo_feat)
-        semantic = self.semantic_out(torch.cat([features, geo_feat], dim=-1))
+        semantic = self.semantic_out(
+            self.dropout(torch.cat([features, geo_feat], dim=-1)))
         semantic = F.softmax(semantic, dim=-1)
 
         return sigma, rgb, semantic
@@ -228,7 +231,7 @@ class ALNetwork(NeRFRenderer):
         """
         sem_features = self.semantic_features(geo_features)
         features = torch.cat([sem_features, geo_features], dim=1)
-        return self.semantic_out(features), sem_features
+        return self.semantic_out(self.dropout(features)), sem_features
 
     def network_parameters(self):
         """
@@ -238,3 +241,32 @@ class ALNetwork(NeRFRenderer):
                 list(self.color_net.parameters()) +
                 list(self.semantic_features.parameters()) +
                 list(self.semantic_out.parameters()))
+
+
+class Autoencoder(nn.Module):
+
+    def __init__(self, in_features, bottleneck):
+        super().__init__()
+        self.encoder = tcnn.Network(n_input_dims=in_features,
+                                    n_output_dims=bottleneck,
+                                    network_config={
+                                        "otype": "CutlassMLP",
+                                        "activation": "ReLU",
+                                        "output_activation": "ReLU",
+                                        "n_neurons": 128,
+                                        "n_hidden_layers": 1
+                                    })
+        self.decoder = tcnn.Network(n_input_dims=bottleneck,
+                                    n_output_dims=in_features,
+                                    network_config={
+                                        "otype": "CutlassMLP",
+                                        "activation": "ReLU",
+                                        "output_activation": "None",
+                                        "n_neurons": 128,
+                                        "n_hidden_layers": 1
+                                    })
+
+    def forward(self, x, p=0.1):
+        code = self.encoder(x)
+        out = self.decoder(F.dropout(code, 0.1))
+        return out, code

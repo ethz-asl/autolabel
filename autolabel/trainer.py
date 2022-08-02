@@ -69,7 +69,7 @@ class SimpleTrainer(Trainer):
             gt_features = data['features'].to(self.device)
             p_features = outputs['semantic_features']
             loss += self.opt.feature_weight * F.l1_loss(
-                p_features, gt_features[:, :p_features.shape[1]])
+                p_features[:, :gt_features.shape[1]], gt_features)
 
         pred_semantic = outputs['semantic']
         if use_semantic_loss.item():

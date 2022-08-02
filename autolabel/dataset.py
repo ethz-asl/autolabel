@@ -232,7 +232,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
             self.h, self.w)
-        return {
+        out = {
             'pixels': image,
             'rays_o': ray_o,
             'rays_d': ray_d,
@@ -241,6 +241,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
             'H': self.h,
             'W': self.w
         }
+        if self.features is not None:
+            out['features'] = self.features[image_index]
+        return out
 
     def _load_images(self):
         images = []

@@ -24,11 +24,9 @@ class TrainingLoop:
                                           factor=4.0,
                                           batch_size=flags.batch_size,
                                           features=self.flags.features)
-        self.model = model_utils.create_model(
-            self.train_dataset.min_bounds,
-            self.train_dataset.max_bounds,
-            encoding=flags.encoding,
-            geometric_features=flags.geometric_features)
+        self.model = model_utils.create_model(self.train_dataset.min_bounds,
+                                              self.train_dataset.max_bounds,
+                                              flags=flags)
         self.optimizer = lambda model: torch.optim.Adam([
             {
                 'name': 'encoding',
@@ -56,7 +54,11 @@ class TrainingLoop:
 
         opt = Namespace(rand_pose=-1,
                         color_space='srgb',
-                        feature_loss=self.flags.features is not None)
+                        feature_loss=self.flags.features is not None,
+                        rgb_weight=self.flags.rgb_weight,
+                        depth_weight=self.flags.depth_weight,
+                        semantic_weight=self.flags.semantic_weight,
+                        feature_weight=self.flags.feature_weight)
         self.trainer = InteractiveTrainer('ngp',
                                           opt,
                                           self.model,
@@ -72,7 +74,7 @@ class TrainingLoop:
 
     def _load_pca(self):
         with h5py.File(os.path.join(self.scene_path, 'features.hdf'), 'r') as f:
-            features = f[f'features/fcn50']
+            features = f[f'features/{self.flags.features}']
             blob = features.attrs['pca'].tobytes()
             self.pca = pickle.loads(blob)
             self.feature_min = features.attrs['min']

@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from torchvision.io.image import read_image
 from PIL import Image
 from autolabel.utils import Scene
+from autolabel.models import Autoencoder
 from sklearn import decomposition
 from tqdm import tqdm
 
@@ -18,25 +19,72 @@ def read_args():
     parser.add_argument('scene')
     parser.add_argument('--vis', action='store_true')
     parser.add_argument('--features', type=str, choices=['fcn50', 'dino'])
+    parser.add_argument('--dim', type=int, default=64)
+    parser.add_argument('--autoencode', action='store_true')
     return parser.parse_args()
+
+
+def compress_features(features, dim):
+    N, H, W, C = features.shape
+    coder = Autoencoder(C, dim).cuda()
+    optimizer = torch.optim.Adam(coder.parameters(), lr=1e-3)
+    dataset = torch.utils.data.TensorDataset(
+        torch.tensor(features.reshape(N * H * W, C)))
+    loader = torch.utils.data.DataLoader(dataset, batch_size=4096, shuffle=True)
+    for _ in range(10):
+        bar = tqdm(loader)
+        for batch in bar:
+            batch = batch[0].cuda()
+            reconstructed, code = coder(batch)
+            loss = F.mse_loss(reconstructed,
+                              batch) + 0.01 * torch.abs(code).mean()
+            bar.set_description(f"Loss: {loss.item()}")
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+    with torch.inference_mode():
+        features_out = np.zeros((N, H, W, dim), dtype=np.float16)
+        for i, feature in enumerate(features):
+            feature = torch.tensor(feature).view(H * W, C).cuda()
+            _, out = coder(feature.view(H * W, C))
+            features_out[i] = out.detach().cpu().numpy().reshape(H, W, dim)
+    return features_out
 
 
 def extract_features(extractor, scene, output_file, flags):
     paths = scene.rgb_paths()
 
-    dataset = output_file.create_dataset(flags.features,
-                                         (len(paths), *extractor.shape, 128),
-                                         dtype=np.float16,
-                                         compression='lzf')
+    extracted = []
     with torch.inference_mode():
-        batch_size = 8
+        batch_size = 2
         for i in tqdm(range(math.ceil(len(paths) / batch_size))):
             batch = paths[i * batch_size:(i + 1) * batch_size]
             image = torch.stack([read_image(p) for p in batch]).cuda()
             image = F.interpolate(image, scale_factor=0.5)
             features = extractor(image / 255.)
-            dataset[i * batch_size:(i + 1) * batch_size] = features.transpose(
-                [0, 2, 3, 1])
+
+            # if flags.vis:
+            #     from matplotlib import pyplot
+            #     _, axis = pyplot.subplots(2)
+            #     axis[0].imshow(image[0].cpu().numpy().transpose([1, 2, 0]))
+            #     axis[1].imshow(features[0].sum(axis=-1))
+            #     pyplot.tight_layout()
+            #     pyplot.show()
+
+            extracted += [f for f in features]
+    extracted = np.stack(extracted)
+
+    if flags.autoencode:
+        features = compress_features(extracted, flags.dim)
+    else:
+        features = extracted[:, :, :, :flags.dim]
+
+    dataset = output_file.create_dataset(
+        flags.features, (len(paths), *extractor.shape, flags.dim),
+        dtype=np.float16,
+        compression='lzf')
+    dataset[:] = features
 
     N, H, W, C = dataset[:].shape
     X = dataset[:].reshape(N * H * W, C)
@@ -65,15 +113,18 @@ def visualize_features(features):
     feature_maps = features[:]
     for fm in feature_maps[::10]:
         mapped = pca.transform(fm.reshape(H * W, C)).reshape(H, W, 3)
-        normalized = np.clip((mapped - minimum) / diff, 0, 1)
+        normalized = np.clip(
+            (mapped - features.attrs['min']) / features.attrs['range'], 0, 1)
         pyplot.imshow(normalized)
         pyplot.show()
 
 
 def get_feature_extractor(features):
-    from autolabel.features import FCN50
+    from autolabel.features import FCN50, Dino
     if features == 'fcn50':
         return FCN50()
+    elif features == 'dino':
+        return Dino()
     else:
         raise NotImplementedError()
 
@@ -91,7 +142,7 @@ def main():
 
     extract_features(extractor, scene, group, flags)
     if flags.vis:
-        visualize_features(group['fcn50'])
+        visualize_features(group[flags.features])
 
 
 if __name__ == "__main__":

@@ -48,11 +48,8 @@ def main():
                            batch_size=flags.batch_size,
                            features=flags.features)
 
-    model = model_utils.create_model(
-        dataset.min_bounds,
-        dataset.max_bounds,
-        encoding=flags.encoding,
-        geometric_features=flags.geometric_features)
+    model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
+                                     flags)
 
     opt = Namespace(rand_pose=-1,
                     color_space='srgb',
