@@ -23,7 +23,7 @@ class FCN50:
 
     @property
     def shape(self):
-        return (180, 240, 128)
+        return (180, 240)
 
     def __call__(self, x):
         batch = self.normalize(x)

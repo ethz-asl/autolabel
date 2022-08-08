@@ -41,7 +41,7 @@ def model_hash(flags):
         features = flags.features
     string = f"g{flags.geometric_features}_{flags.encoding}_{features}"
     string += f"_rgb{flags.rgb_weight}_d{flags.depth_weight}_s{flags.semantic_weight}"
-    string += f"_f{flags.feature_weight}"
+    string += f"_f{flags.feature_weight}_do{flags.dropout}"
     return string
 
 

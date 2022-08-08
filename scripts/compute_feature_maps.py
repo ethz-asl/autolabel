@@ -18,6 +18,9 @@ def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scene')
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--video',
+                        type=str,
+                        help="Create video of maps and write to this path.")
     parser.add_argument('--features', type=str, choices=['fcn50', 'dino'])
     parser.add_argument('--dim', type=int, default=64)
     parser.add_argument('--autoencode', action='store_true')
@@ -104,10 +107,6 @@ def extract_features(extractor, scene, output_file, flags):
 def visualize_features(features):
     pca = pickle.loads(features.attrs['pca'].tobytes())
     N, H, W, C = features[:].shape
-    X = features[:].reshape(N * H * W, C)
-    indices = np.random.randint(0, X.shape[0], size=50000)
-    subset = X[indices]
-    transformed = pca.transform(subset)
 
     from matplotlib import pyplot
     feature_maps = features[:]
@@ -117,6 +116,25 @@ def visualize_features(features):
             (mapped - features.attrs['min']) / features.attrs['range'], 0, 1)
         pyplot.imshow(normalized)
         pyplot.show()
+
+
+def write_video(features, out):
+    from skvideo.io.ffmpeg import FFmpegWriter
+    pca = pickle.loads(features.attrs['pca'].tobytes())
+    N, H, W, C = features[:].shape
+    writer = FFmpegWriter(out,
+                          inputdict={'-framerate': '5'},
+                          outputdict={
+                              '-c:v': 'libx264',
+                              '-r': '5',
+                              '-pix_fmt': 'yuv420p'
+                          })
+    for feature in tqdm(features, desc="Encoding frames"):
+        mapped = pca.transform(feature.reshape(H * W, C)).reshape(H, W, 3)
+        normalized = np.clip(
+            (mapped - features.attrs['min']) / features.attrs['range'], 0, 1)
+        frame = (normalized * 255.0).astype(np.uint8)
+        writer.writeFrame(frame)
 
 
 def get_feature_extractor(features):
@@ -143,6 +161,8 @@ def main():
     extract_features(extractor, scene, group, flags)
     if flags.vis:
         visualize_features(group[flags.features])
+    if flags.video:
+        write_video(group[flags.features], flags.video)
 
 
 if __name__ == "__main__":
