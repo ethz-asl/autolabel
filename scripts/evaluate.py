@@ -73,11 +73,8 @@ def main(flags):
                                    factor=4.0,
                                    batch_size=flags.batch_size,
                                    lazy=True)
-            model = model_utils.create_model(
-                dataset.min_bounds,
-                dataset.max_bounds,
-                encoding=params.encoding,
-                geometric_features=params.geometric_features).cuda()
+            model = model_utils.create_model(dataset.min_bounds,
+                                             dataset.max_bounds, params).cuda()
             model = model.eval()
 
             checkpoint_dir = os.path.join(model_path, 'checkpoints')

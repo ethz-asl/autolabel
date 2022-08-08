@@ -109,7 +109,7 @@ def main():
                            factor=flags.factor_test,
                            batch_size=flags.batch_size * 2)
     test_dataloader = torch.utils.data.DataLoader(LenDataset(
-        testset, testset.poses.shape[0]),
+        testset, testset.rotations.shape[0]),
                                                   batch_size=None,
                                                   num_workers=0)
     trainer.evaluate(test_dataloader)

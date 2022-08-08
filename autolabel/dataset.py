@@ -5,12 +5,36 @@ import torch
 import pickle
 import random
 import h5py
+from numba import njit
 from PIL import Image
 from autolabel.utils import Scene
 from torch_ngp.nerf.provider import nerf_matrix_to_ngp
 
 CV_TO_OPENGL = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0],
                          [0.0, 0.0, -1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
+
+
+@njit
+def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
+                       fx: float, fy: float, cx: float, cy: float,
+                       randomize: bool) -> np.ndarray:
+    directions = np.zeros((len(ray_indices), 3), dtype=np.float32)
+    xs = (ray_indices % w).astype(np.float32)
+    ys = ((ray_indices - xs) / w).astype(np.float32)
+    if randomize:
+        xs += np.random.random(ray_indices.size).astype(np.float32)
+        ys += np.random.random(ray_indices.size).astype(np.float32)
+    else:
+        xs += 0.5
+        ys += 0.5
+    directions[:, 0] = (xs - cx) / fx
+    directions[:, 1] = (ys - cy) / fy
+    directions[:, 2] = 1.0
+    norm = np.expand_dims(np.sqrt((directions * directions).sum(axis=1)), 1)
+    directions /= norm
+    for i in range(directions.shape[0]):
+        directions[i] = R_WC @ directions[i]
+    return directions
 
 
 class LenDataset(torch.utils.data.IterableDataset):
@@ -168,7 +192,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
             while True:
                 yield self._next_train()
         else:
-            for i in range(self.poses.shape[0]):
+            for i in range(self.rotations.shape[0]):
                 yield self._get_test(i)
 
     def _next_train(self):
@@ -211,10 +235,13 @@ class SceneDataset(torch.utils.data.IterableDataset):
                 ray_indices].astype(int) - 1
             ray_o[start:end] = np.broadcast_to(self.origins[image_index, None],
                                                (ray_indices.shape[0], 3))
-            ray_d[start:end] = self.directions[image_index][ray_indices]
+            ray_d[start:end] = self._compute_direction(image_index,
+                                                       ray_indices,
+                                                       randomize=True)
+            # ray_d[start:end] = self.directions[image_index][ray_indices]
 
             if self.features is not None:
-                width = int(self.camera.size[0])
+                width = int(self.w)
                 x = ray_indices % width
                 y = (ray_indices - x) / width
                 xy = np.stack([x, y], axis=-1)
@@ -228,8 +255,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
     def _get_test(self, image_index):
         image = self.images[image_index].reshape(self.h, self.w, 3)
-        ray_o = np.broadcast_to(self.origins[image_index], (self.h, self.w, 3))
-        ray_d = self.directions[image_index].reshape(self.h, self.w, 3)
+        ray_o = np.broadcast_to(self.origins[image_index],
+                                (self.h, self.w, 3)).astype(np.float32)
+        ray_d = self._compute_direction(image_index, np.arange(
+            self.resolution)).reshape(self.h, self.w, 3).astype(np.float32)
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
             self.h, self.w)
@@ -307,7 +336,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.index_sampler = IndexSampler()
         self.index_sampler.update(self.semantics.reshape(-1, self.resolution))
         self._compute_image_mask(self.images)
-        self.poses = np.stack(cameras, axis=0)
+        poses = np.stack(cameras, axis=0)
+        self.rotations = np.ascontiguousarray(poses[:, :3, :3])
+        self.origins = poses[:, :3, 3]
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
         self.h = self.camera.size[1]
@@ -316,26 +347,6 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.max_bounds = aabb[1]
 
     def _compute_rays(self):
-        pixel_center = 0.5
-        x, y = np.meshgrid(np.arange(self.w, dtype=np.float32) + pixel_center,
-                           np.arange(self.h, dtype=np.float32) + pixel_center,
-                           indexing='xy')
-        focal_x = self.camera.fx
-        focal_y = self.camera.fy
-        c_x = self.camera.cx
-        c_y = self.camera.cy
-        camera_directions = np.stack([(x - c_x) / focal_x, (y - c_y) / focal_y,
-                                      np.ones_like(x)],
-                                     axis=-1)
-
-        camera_directions = camera_directions / np.linalg.norm(
-            camera_directions, axis=-1)[:, :, None]
-        camera_directions = camera_directions.reshape(-1, 3)  # R x 3
-        directions = (self.poses[:, None, :3, :3]
-                      @ camera_directions[None, :, :, None])[:, :, :, 0]
-
-        self.origins = self.poses[:, :3, -1]
-
         if self.split == "train":
             self.images = self.images.reshape(self.n_examples, self.resolution,
                                               3)
@@ -343,7 +354,16 @@ class SceneDataset(torch.utils.data.IterableDataset):
             self.semantics = self.semantics.reshape(self.n_examples,
                                                     self.resolution)
 
-        self.directions = directions
+    def _compute_direction(self, image_index, ray_indices, randomize=False):
+        """
+        image_index: int, index of image/pose in question
+        ray_indices: np.array[int] N list of pixel indices for which to compute ray direction
+        returns: np.array N x 3 floats
+        """
+        R_WC = self.rotations[image_index]
+        return _compute_direction(R_WC, ray_indices, self.w, self.camera.fx,
+                                  self.camera.fy, self.camera.cx,
+                                  self.camera.cy, randomize)
 
     def _load_features(self, features):
         with h5py.File(os.path.join(self.scene.path, 'features.hdf'),
