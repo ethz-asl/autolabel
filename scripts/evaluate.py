@@ -101,7 +101,9 @@ def main(flags):
     for model in models:
         table.add_column(model)
     for scene_name, results in zip(scene_names, ious):
-        table.add_row(scene_name, *[str(v) for v in results])
+        table.add_row(scene_name, *[f"{v:.03f}" for v in results])
+    total_row = ['Total'] + [f"{v:.03f}" for v in ious.mean(axis=0)]
+    table.add_row(*total_row, end_section=True)
 
     console = Console()
     console.print(table)
