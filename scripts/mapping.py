@@ -275,7 +275,6 @@ class PoseSaver:
         # Then get the center.
         min_bounds = np.zeros(3)
         max_bounds = np.zeros(3)
-        pc = o3d.geometry.PointCloud()
         depth_frame = o3d.io.read_image(self.scene.depth_paths()[0])
         depth_size = np.asarray(depth_frame).shape[::-1]
         K = self.scene.camera.scale(depth_size).camera_matrix

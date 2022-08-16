@@ -29,8 +29,8 @@ class FCN50:
         batch = self.normalize(x)
         out = self.extractor(batch)
 
-        f_small = out['features_small'][:, :64]
-        f_large = out['features_large'][:, :64]
+        f_small = out['features_small'][:, :256]
+        f_large = out['features_large'][:, :256]
         f_small = F.interpolate(f_small, f_large.shape[-2:], mode='bilinear')
         return torch.cat([f_small, f_large],
                          dim=1).detach().cpu().half().numpy().transpose(

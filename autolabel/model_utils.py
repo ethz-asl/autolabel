@@ -29,7 +29,7 @@ def model_flag_parser():
                         help="Use semantic feature supervision.")
     parser.add_argument('--rgb-weight', default=1.0, type=float)
     parser.add_argument('--semantic-weight', default=1.0, type=float)
-    parser.add_argument('--feature-weight', default=1.0, type=float)
+    parser.add_argument('--feature-weight', default=0.5, type=float)
     parser.add_argument('--depth-weight', default=0.05, type=float)
     parser.add_argument('--dropout', default=0.1, type=float)
     return parser
