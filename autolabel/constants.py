@@ -1,3 +1,5 @@
 import numpy as np
+from matplotlib import cm
 
-COLORS = np.array([[52, 137, 235], [235, 229, 52]], dtype=np.uint8)
+colors = (cm.tab10(np.linspace(0, 1, 10)) * 255.0)[:, :3].astype(np.uint8)
+COLORS = np.concatenate([colors, colors, colors, colors], axis=0)

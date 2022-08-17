@@ -53,7 +53,7 @@ def model_dir(scene_path, flags):
     return os.path.join(flags.workspace, scene_name, mhash)
 
 
-def create_model(min_bounds, max_bounds, flags):
+def create_model(min_bounds, max_bounds, n_classes, flags):
     extents = max_bounds - min_bounds
     bound = (extents - (min_bounds + max_bounds) * 0.5).max()
     return ALNetwork(num_layers=2,
@@ -66,4 +66,5 @@ def create_model(min_bounds, max_bounds, flags):
                      dropout=flags.dropout,
                      hidden_dim_semantic=64,
                      cuda_ray=False,
-                     density_scale=1)
+                     density_scale=1,
+                     semantic_classes=n_classes)

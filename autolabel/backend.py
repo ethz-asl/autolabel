@@ -24,8 +24,11 @@ class TrainingLoop:
                                           factor=4.0,
                                           batch_size=flags.batch_size,
                                           features=self.flags.features)
+
+        n_classes = self.train_dataset.n_classes if self.train_dataset.n_classes is not None else 2
         self.model = model_utils.create_model(self.train_dataset.min_bounds,
                                               self.train_dataset.max_bounds,
+                                              n_classes,
                                               flags=flags)
         self.optimizer = lambda model: torch.optim.Adam([
             {

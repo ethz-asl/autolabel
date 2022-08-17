@@ -73,8 +73,10 @@ def main(flags):
                                    factor=4.0,
                                    batch_size=flags.batch_size,
                                    lazy=True)
+            n_classes = dataset.n_classes if dataset.n_classes is not None else 2
             model = model_utils.create_model(dataset.min_bounds,
-                                             dataset.max_bounds, params).cuda()
+                                             dataset.max_bounds, n_classes,
+                                             params).cuda()
             model = model.eval()
 
             checkpoint_dir = os.path.join(model_path, 'checkpoints')

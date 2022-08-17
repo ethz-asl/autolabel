@@ -186,6 +186,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
             self._load_features(features)
         self.error_map = None
         self.sample_chunk_size = 32
+        self.n_classes = self.scene.n_classes
 
     def __iter__(self):
         if self.split == "train":
@@ -336,9 +337,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.index_sampler = IndexSampler()
         self.index_sampler.update(self.semantics.reshape(-1, self.resolution))
         self._compute_image_mask(self.images)
-        poses = np.stack(cameras, axis=0)
-        self.rotations = np.ascontiguousarray(poses[:, :3, :3])
-        self.origins = poses[:, :3, 3]
+        self.poses = np.stack(cameras, axis=0)
+        self.rotations = np.ascontiguousarray(self.poses[:, :3, :3])
+        self.origins = self.poses[:, :3, 3]
         self.n_examples = self.images.shape[0]
         self.w = self.camera.size[0]
         self.h = self.camera.size[1]

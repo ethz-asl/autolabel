@@ -12,7 +12,6 @@ import signal
 from autolabel.utils import Scene
 from autolabel import model_utils
 from autolabel.backend import TrainingLoop
-from autolabel.constants import COLORS
 from autolabel.ui.canvas import Canvas, ALPHA
 from matplotlib import cm
 
@@ -223,9 +222,10 @@ class SceneViewer(QWidget):
 
         drawing = self._drawings.get(self.current_image, None)
         if drawing is None:
-            drawing = QtGui.QPixmap(self.canvas.canvas_width,
-                                    self.canvas.canvas_height)
-            drawing.fill(QtGui.QColor(0, 0, 0, 0))
+            drawing = QtGui.QImage(self.canvas.canvas_width,
+                                   self.canvas.canvas_height,
+                                   QtGui.QImage.Format_RGB888)
+            drawing.fill(0)
             self._drawings[self.current_image] = drawing
         image = self._image_cache[self.current_image]
         self.canvas.set_image(image, drawing)
@@ -254,17 +254,12 @@ class SceneViewer(QWidget):
         semantic_dir = os.path.join(self.scene.path, 'semantic')
         os.makedirs(semantic_dir, exist_ok=True)
         drawing = self._drawings[image_name]
-        array = np.asarray(fromqimage(drawing.toImage()))[:, :, :3]
+        array = np.asarray(fromqimage(drawing))[:, :, 0]
         if array.max() == 0:
             # Canvas is empty. Skip.
             return
-        out_map = np.zeros(array.shape[:2], dtype=np.uint8)
-        for i, color in enumerate(COLORS):
-            where_color = np.linalg.norm(array - color, 1, axis=-1) < 3
-            # Store index + 1 as 0 is the null class.
-            out_map[where_color] = i + 1
         path = os.path.join(semantic_dir, f"{image_name}.png")
-        Image.fromarray(out_map).save(path)
+        Image.fromarray(array).save(path)
 
     def load(self):
         semantic_dir = os.path.join(self.scene.path, 'semantic')
@@ -274,18 +269,15 @@ class SceneViewer(QWidget):
         for image in images:
             image_name = image.split('.')[0]
             image_path = os.path.join(semantic_dir, image)
-            array = np.array(Image.open(image_path))
-            colors = np.zeros((*array.shape, 4), dtype=np.uint8)
-            where_non_null = array > 0
-            colors[where_non_null, 3] = ALPHA
-            colors[where_non_null, :3] = COLORS[array[where_non_null] - 1]
-            qimage = ImageQt(Image.fromarray(colors))
-            self._drawings[image_name] = QtGui.QPixmap.fromImage(qimage)
+            array = np.array(Image.open(image_path)).astype(np.uint8)
+            array = np.repeat(array[:, :, None], 3, axis=2)
+            self._drawings[image_name] = ImageQt(Image.fromarray(array))
 
     def clear_image(self):
-        drawing = QtGui.QPixmap(self.canvas.canvas_width,
-                                self.canvas.canvas_height)
-        drawing.fill(QtGui.QColor(0, 0, 0, 0))
+        drawing = QtGui.QImage(self.canvas.canvas_width,
+                               self.canvas.canvas_height,
+                               QtGui.QImage.Format_Grayscale8)
+        drawing.fill(0)
         self._drawings[self.current_image] = drawing
         self._set_image(self.current_image_index)
         image = self._image_cache[self.current_image]
@@ -302,8 +294,9 @@ class SceneViewer(QWidget):
         self._close()
 
     def _close(self):
-        self.process.terminate()
-        self.process.join()
+        if not self.flags.dry:
+            self.process.terminate()
+            self.process.join()
 
     def shutdown(self):
         self._close()

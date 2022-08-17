@@ -1,12 +1,20 @@
 import numpy as np
 from PIL import Image
-from PIL.ImageQt import ImageQt
+from PIL.ImageQt import ImageQt, fromqimage
 from PyQt5.QtWidgets import QWidget
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
 from autolabel.constants import COLORS
 
 ALPHA = 175
 QT_COLORS = [QtGui.QColor(c[0], c[1], c[2], ALPHA) for c in COLORS]
+ALPHA_COLORS = np.zeros((COLORS.shape[0] + 1, 4), dtype=np.uint8)
+ALPHA_COLORS[0] = np.array([0., 0., 0., 0.])
+ALPHA_COLORS[1:, :3] = COLORS
+ALPHA_COLORS[1:, 3] = ALPHA
+
+
+def _bitmap_to_color(array):
+    return ALPHA_COLORS[array]
 
 
 class Canvas(QWidget):
@@ -27,9 +35,13 @@ class Canvas(QWidget):
         self.g_view.mousePressEvent = self._mouse_down
         self.g_view.mouseReleaseEvent = self._mouse_up
         self.g_view.mouseMoveEvent = self._mouse_move
+        self.drawing = None
+        self.canvas = None
         self.canvas_pixmap = None
         self.scene_image = None
         self.active_class = 1
+        self.bitmap_painter = None
+        self.color_painter = None
         self.inferred_image = None
         self.callback = cb
 
@@ -40,7 +52,7 @@ class Canvas(QWidget):
     def _mouse_down(self, event):
         self.active = True
         self.lastpoint = self._scale(event.pos())
-        self.painter.drawPoint(self.lastpoint)
+        self._draw_point(self.lastpoint)
         self._changed()
 
     def _mouse_up(self, event):
@@ -49,14 +61,19 @@ class Canvas(QWidget):
 
     def _mouse_move(self, event):
         if event.buttons() & QtCore.Qt.LeftButton and self.active:
-            self.painter.drawLine(self.lastpoint, self._scale(event.pos()))
+            self._draw_line(self.lastpoint, self._scale(event.pos()))
             self.lastpoint = self._scale(event.pos())
             self._changed()
 
     def set_image(self, image, drawing):
-        self.painter = None
+        self.bitmap_painter = None
+        self.color_painter = None
+        self.drawing = drawing
         self.image = ImageQt(image)
-        self.canvas = drawing
+        array = np.asarray(fromqimage(drawing))[:, :, 0]
+        color_array = _bitmap_to_color(array)
+        self.canvas = QtGui.QPixmap.fromImage(
+            ImageQt(Image.fromarray(color_array)))
         self.image_width = image.width
         self.image_height = image.height
         self._image_changed()
@@ -87,14 +104,33 @@ class Canvas(QWidget):
         # Scales a point from view coordinates to canvas coordinates.
         return self.g_view.mapToScene(point)
 
+    def _draw_point(self, point):
+        self.bitmap_painter.drawPoint(self.lastpoint)
+        self.color_painter.drawPoint(self.lastpoint)
+
+    def _draw_line(self, start, end):
+        self.bitmap_painter.drawLine(start, end)
+        self.color_painter.drawLine(start, end)
+
     def set_class(self, class_index):
         self.active_class = class_index
-        self.painter = None
-        self.painter = QtGui.QPainter(self.canvas)
-        self.painter.setPen(
-            QtGui.QPen(self.color, self.brush_size, QtCore.Qt.SolidLine,
-                       QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
-        self.painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
+        # Cleanup old painters.
+        self.bitmap_painter = None
+        self.color_painter = None
+        self.bitmap_painter = QtGui.QPainter(self.drawing)
+        self.color_painter = QtGui.QPainter(self.canvas)
+        bitpen = QtGui.QPen(
+            QtGui.QColor(self.active_class + 1, self.active_class + 1,
+                         self.active_class + 1), self.brush_size,
+            QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
+        color_pen = QtGui.QPen(self.color, self.brush_size, QtCore.Qt.SolidLine,
+                               QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
+        self.bitmap_painter.setPen(bitpen)
+        self.bitmap_painter.setCompositionMode(
+            QtGui.QPainter.CompositionMode_Source)
+        self.color_painter.setPen(color_pen)
+        self.color_painter.setCompositionMode(
+            QtGui.QPainter.CompositionMode_Source)
 
     def set_inferred(self, image):
         image = COLORS[image]

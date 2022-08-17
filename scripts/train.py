@@ -48,8 +48,9 @@ def main():
                            batch_size=flags.batch_size,
                            features=flags.features)
 
+    n_classes = dataset.n_classes if dataset.n_classes is not None else 2
     model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
-                                     flags)
+                                     n_classes, flags)
 
     opt = Namespace(rand_pose=-1,
                     color_space='srgb',

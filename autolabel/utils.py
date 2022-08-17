@@ -1,7 +1,6 @@
 import cv2
 import json
 import numpy as np
-import json
 import os
 
 
@@ -53,6 +52,7 @@ class Scene:
         intrinsics_path = os.path.join(scene_path, 'intrinsics.txt')
         image_size = self._peak_image_size()
         self.camera = Camera.from_path(intrinsics_path, image_size)
+        self._n_classes = None
 
     def _peak_image_size(self):
         if os.path.exists(self.raw_rgb_path):
@@ -142,6 +142,17 @@ class Scene:
             depth_paths = self.depth_paths()
         image = cv2.imread(depth_paths[0], -1)
         return (image.shape[1], image.shape[0])
+
+    @property
+    def n_classes(self):
+        if self._n_classes is None:
+            metadata_path = os.path.join(self.path, 'metadata.json')
+            if not os.path.exists(metadata_path):
+                return None
+            with open(metadata_path) as f:
+                data = json.load(f)
+            self._n_classes = data['n_classes']
+        return self._n_classes
 
 
 def transform_points(T, points):
