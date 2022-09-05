@@ -39,6 +39,26 @@ class SimpleTrainer(Trainer):
         if self.use_tensorboardX and self.local_rank == 0:
             self.writer.close()
 
+    def train_iterations(self, dataloader, iterations):
+        if self.model.cuda_ray:
+            self.model.mark_untrained_grid(dataloader._data.poses,
+                                           dataloader._data.intrinsics)
+
+        iterator = iter(dataloader)
+        bar = tqdm(range(iterations), desc="Loss: N/A")
+        for _ in bar:
+            data = next(iterator)
+            self.optimizer.zero_grad()
+            with torch.cuda.amp.autocast(enabled=self.fp16):
+                _, _, loss = self.train_step(data)
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            bar.set_description(f"Loss: {loss:.04f}")
+        if self.ema is not None:
+            self.ema.update()
+        self._step_scheduler(loss)
+
     def train_step(self, data):
         rays_o = data['rays_o'].to(self.device)  # [B, 3]
         rays_d = data['rays_d'].to(self.device)  # [B, 3]
@@ -134,6 +154,12 @@ class SimpleTrainer(Trainer):
         return pred_rgb[None], pred_depth[None], pred_semantic[None], gt_rgb[
             None], loss
 
+    def _step_scheduler(self, loss):
+        if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+            self.lr_scheduler.step(loss)
+        else:
+            self.lr_scheduler.step()
+
 
 class InteractiveTrainer(SimpleTrainer):
 
@@ -191,9 +217,3 @@ class InteractiveTrainer(SimpleTrainer):
 
     def dataset_updated(self, loader):
         self.loader = loader
-
-    def _step_scheduler(self, loss):
-        if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-            self.lr_scheduler.step(loss)
-        else:
-            self.lr_scheduler.step()

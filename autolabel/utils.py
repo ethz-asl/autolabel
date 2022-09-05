@@ -96,6 +96,9 @@ class Scene:
     def depth_paths(self):
         return self._get_paths(self.depth_path)
 
+    def semantic_paths(self):
+        return self._get_paths(os.path.join(self.path, 'semantic'))
+
     def raw_rgb_paths(self):
         return self._get_paths(self.raw_rgb_path)
 

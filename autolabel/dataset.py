@@ -160,7 +160,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
                  factor=4.0,
                  batch_size=4096,
                  lazy=False,
-                 features=None):
+                 features=None,
+                 load_semantic=True):
         self.lazy = lazy
         self.split = split
         self.batch_size = batch_size
@@ -169,6 +170,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.pixel_indices = None
         self.index_sampler = None
         self.features = None
+        self.load_semantic = load_semantic
         camera = self.scene.camera
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
@@ -301,7 +303,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
             semantic_path = os.path.join(self.scene.path, 'semantic',
                                          os.path.basename(depth_images[index]))
-            if os.path.exists(semantic_path):
+            if self.load_semantic and os.path.exists(semantic_path):
                 image = Image.open(semantic_path)
                 image = image.resize(self.camera.size, Image.NEAREST)
                 semantics.append(np.asarray(image))
