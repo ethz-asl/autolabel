@@ -49,7 +49,7 @@ class UserSimulation:
     def __init__(self,
                  model,
                  dataset,
-                 clicks_per_step=3,
+                 clicks_per_step=5,
                  visualize=True,
                  device='cuda:0'):
         self.model = model
@@ -78,14 +78,25 @@ class UserSimulation:
             self._annotate_pixel(frame_index, chosen_pixel, gt_semantic)
 
     def evaluate(self):
-        # Compute how well we are doing
-        pass
+        indices = np.random.choice(self.frame_indices, 10)
+        ious = []
+        for index in indices:
+            gt_semantic_path = self.semantic_paths[index]
+            gt_semantic = self._load_semantic(gt_semantic_path)
+            p_semantic = self._infer_semantics(index)
+            where_defined = gt_semantic >= 0
+            intersection = gt_semantic == p_semantic
+            intersection = np.bitwise_and(where_defined, intersection)
+            iou = intersection.sum() / where_defined.sum()
+            ious.append(iou)
+        return np.mean(ious)
 
     def _choose_pixel(self, where_wrong):
         incorrect_indices = np.argwhere(where_wrong)
         return incorrect_indices[np.random.randint(0, len(incorrect_indices))]
 
     def _infer_semantics(self, frame_index):
+        self.model.eval()
         with torch.inference_mode():
             with torch.cuda.amp.autocast(enabled=True):
                 batch = self.dataset._get_test(frame_index)
@@ -97,11 +108,13 @@ class UserSimulation:
                                             rays_d,
                                             staged=True,
                                             perturb=False)
-                return outputs['semantic'].argmax(dim=-1).cpu().numpy()
+        self.model.train()
+        return outputs['semantic'].argmax(dim=-1).cpu().numpy()
 
     def _annotate_pixel(self, frame_index, yx, gt_semantic):
-        semantic_class = gt_semantic[yx[0], yx[1]]
-        assert semantic_class > 0  # 0 is void class
+        semantic_class = gt_semantic[
+            yx[0], yx[1]] + 1  # Counteract shift in _load_semantic
+        assert semantic_class >= 0  # -1 is void class
         index = yx[0] * self.dataset.w + yx[1]
         self.dataset.semantics[frame_index][index] = semantic_class
 
@@ -217,13 +230,15 @@ def main():
         print("Visualizing at start")
         user.visualize_examples()
 
-    progress = tqdm(range(100), desc='Simulating')
-    for i in range(100):
+    for i in range(500):
         user.annotate()
         annotated = (dataset.semantics > 0).sum()
-        progress.set_description(
-            f"Annotation step {i}. {annotated} annotated pixels")
+        print(f"Annotation step {i}. {annotated} annotated pixels")
+        train_dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=None, num_workers=flags.workers)
         trainer.train_iterations(train_dataloader, 100)
+        iou = user.evaluate()
+        print(f"iou: {iou:.3f}")
 
         if i % 10 == 0 and flags.vis:
             user.visualize_examples()

@@ -40,10 +40,10 @@ class SimpleTrainer(Trainer):
             self.writer.close()
 
     def train_iterations(self, dataloader, iterations):
+        self.model.train()
         if self.model.cuda_ray:
             self.model.mark_untrained_grid(dataloader._data.poses,
                                            dataloader._data.intrinsics)
-
         iterator = iter(dataloader)
         bar = tqdm(range(iterations), desc="Loss: N/A")
         for _ in bar:
