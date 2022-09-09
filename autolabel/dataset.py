@@ -390,9 +390,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
             images = np.stack([images[index] for index in indices])
         else:
             images = images[::10]
-        where_non_zero = np.all(images != np.zeros((3,), dtype=np.float32),
-                                axis=3)
-        where_non_zero = np.all(where_non_zero, axis=0).reshape(-1)
+        where_non_zero = np.any(images != 0.0, axis=3)
+        where_non_zero = np.any(where_non_zero.reshape(where_non_zero.shape[0],
+                                                       -1),
+                                axis=0)
         self.pixel_indices = np.argwhere(where_non_zero).ravel()
 
     def semantic_map_updated(self, image_index):
@@ -405,3 +406,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
             self.index_sampler.update(self.semantics)
         else:
             print(f"Could not find image {semantic_path}")
+
+    def update_sampler(self):
+        """
+        Called if the semantic annotations have been updated,
+        e.g. during a user simulation.
+        """
+        self.index_sampler.update(self.semantics)

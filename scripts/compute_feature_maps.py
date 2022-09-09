@@ -64,7 +64,7 @@ def extract_features(extractor, scene, output_file, flags):
         for i in tqdm(range(math.ceil(len(paths) / batch_size))):
             batch = paths[i * batch_size:(i + 1) * batch_size]
             image = torch.stack([read_image(p) for p in batch]).cuda()
-            image = F.interpolate(image, scale_factor=0.5)
+            image = F.interpolate(image, [720, 960])
             features = extractor(image / 255.)
 
             # if flags.vis:
