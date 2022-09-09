@@ -49,16 +49,22 @@ class UserSimulation:
     def __init__(self,
                  model,
                  dataset,
+                 result_path,
                  clicks_per_step=5,
                  visualize=True,
                  device='cuda:0'):
         self.model = model
+        self.result_path = result_path
         self.device = device
         self.dataset = dataset
         self.clicks_per_step = clicks_per_step
         self.visualize = visualize
         self.semantic_paths = dataset.scene.semantic_paths()
         self.frame_indices = np.arange(0, len(dataset.poses))
+        self.evaluation_frames = np.random.choice(self.frame_indices,
+                                                  15,
+                                                  replace=False)
+        self.results = []  # tuple(step, annotated pixels, iou)
 
     def annotate(self):
         # Sample pixels from those that are incorrect
@@ -76,11 +82,11 @@ class UserSimulation:
             # if self.visualize:
             #     show_example(p_semantic, gt_semantic, where_wrong, chosen_pixel)
             self._annotate_pixel(frame_index, chosen_pixel, gt_semantic)
+        self.dataset.update_sampler()
 
-    def evaluate(self):
-        indices = np.random.choice(self.frame_indices, 10)
+    def evaluate(self, current_step, annotated_pixels):
         ious = []
-        for index in indices:
+        for index in self.evaluation_frames:
             gt_semantic_path = self.semantic_paths[index]
             gt_semantic = self._load_semantic(gt_semantic_path)
             p_semantic = self._infer_semantics(index)
@@ -89,7 +95,12 @@ class UserSimulation:
             intersection = np.bitwise_and(where_defined, intersection)
             iou = intersection.sum() / where_defined.sum()
             ious.append(iou)
-        return np.mean(ious)
+        miou = np.mean(ious)
+        self.results.append((current_step, annotated_pixels, miou))
+        return miou
+
+    def save(self):
+        np.savetxt(self.result_path, np.array(self.results))
 
     def _choose_pixel(self, where_wrong):
         incorrect_indices = np.argwhere(where_wrong)
@@ -138,6 +149,8 @@ class UserSimulation:
                                                 rays_d,
                                                 staged=True,
                                                 perturb=False)
+                    p_rgb = (np.clip(outputs['image'].cpu().numpy(), 0., 1.) *
+                             255.).astype(np.uint8)
                     p_semantic = outputs['semantic'].argmax(
                         dim=-1).cpu().numpy()
 
@@ -154,7 +167,7 @@ class UserSimulation:
                     axis.axis('off')
                     axis = pyplot.subplot2grid((n_visualize, 2), loc=(i, 1))
                     axis.set_title("Predicted")
-                    axis.imshow(rgb)
+                    axis.imshow(p_rgb)
                     axis.imshow(COLORS[p_semantic], alpha=0.5)
                     axis.axis('off')
         pyplot.tight_layout()
@@ -200,8 +213,8 @@ def main():
                                                    num_workers=flags.workers)
 
     criterion = torch.nn.MSELoss(reduction='none')
-    scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(optimizer,
-                                                                factor=1.0)
+    scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(
+        optimizer, [1, 10, 30, 50], gamma=0.5)
 
     model_dir = model_utils.model_dir(flags.scene, flags)
     device = 'cuda:0'
@@ -221,8 +234,13 @@ def main():
     # Warmup by training without any labels
     trainer.train_iterations(train_dataloader, flags.warmup)
 
+    result_file = os.path.join(model_dir, 'user_simulation.csv')
+
+    np.random.seed(0)
+
     user = UserSimulation(model,
                           dataset,
+                          result_file,
                           visualize=flags.vis,
                           device=trainer.device)
 
@@ -234,14 +252,14 @@ def main():
         user.annotate()
         annotated = (dataset.semantics > 0).sum()
         print(f"Annotation step {i}. {annotated} annotated pixels")
-        train_dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=None, num_workers=flags.workers)
-        trainer.train_iterations(train_dataloader, 100)
-        iou = user.evaluate()
-        print(f"iou: {iou:.3f}")
+        trainer.train_iterations(train_dataloader, 250)
+        if i % 5 == 0:
+            iou = user.evaluate(i, annotated)
+            print(f"iou: {iou:.3f}")
 
         if i % 10 == 0 and flags.vis:
             user.visualize_examples()
+    user.save()
 
 
 if __name__ == "__main__":
