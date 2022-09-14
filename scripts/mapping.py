@@ -62,12 +62,12 @@ class HLoc:
                                 matches=self.matches)
             model = reconstruction.main(
                 self.tmp_dir,
-                                        image_dir,
-                                        self.sfm_pairs,
-                                        self.features,
-                                        self.matches,
-                                        image_list=image_list_path,
-                                        camera_mode=pycolmap.CameraMode.SINGLE,
+                image_dir,
+                self.sfm_pairs,
+                self.features,
+                self.matches,
+                image_list=image_list_path,
+                camera_mode=pycolmap.CameraMode.SINGLE,
                 image_options={'camera_model': "OPENCV"},
                 mapper_options={
                     'ba_refine_principal_point': True,
@@ -93,12 +93,12 @@ class HLoc:
                                              matches=self.matches)
             model = reconstruction.main(
                 self.tmp_dir,
-                                        image_dir,
-                                        self.sfm_pairs,
-                                        feature_path,
-                                        match_path,
-                                        image_list=image_list_path,
-                                        camera_mode=pycolmap.CameraMode.SINGLE,
+                image_dir,
+                self.sfm_pairs,
+                feature_path,
+                match_path,
+                image_list=image_list_path,
+                camera_mode=pycolmap.CameraMode.SINGLE,
                 image_options={'camera_model': "OPENCV"},
                 mapper_options={
                     'ba_refine_principal_point': True,
