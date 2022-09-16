@@ -39,7 +39,7 @@ nerf/             # Contains NeRF checkpoints and training metadata.
 
 ## Computing camera poses
 
-The script [`script/mapping.py`](script/mapping.py) defines a mapping pipeline which will compute camera poses for your scene. The required input files are:
+The script [`scripts/mapping.py`](scripts/mapping.py) defines a mapping pipeline which will compute camera poses for your scene. The required input files are:
 - `raw_rgb/` images
 - `raw_depth/` frames
 - `intrinsics.txt` camera intrinsic parameters
