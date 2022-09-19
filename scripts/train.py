@@ -25,6 +25,7 @@ def read_args():
     parser.add_argument('--iters', type=int, default=10000)
     parser.add_argument('--workers', '-w', type=int, default=1)
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument(
         '--workspace',
         type=str,
@@ -109,12 +110,13 @@ def main():
                            flags.scene,
                            factor=flags.factor_test,
                            batch_size=flags.batch_size * 2)
-    test_dataloader = torch.utils.data.DataLoader(LenDataset(
-        testset, testset.rotations.shape[0]),
-                                                  batch_size=None,
-                                                  num_workers=0)
-    trainer.evaluate(test_dataloader)
     trainer.save_checkpoint()
+    if not flags.skip_eval:
+        test_dataloader = torch.utils.data.DataLoader(LenDataset(
+            testset, testset.rotations.shape[0]),
+                                                      batch_size=None,
+                                                      num_workers=0)
+        trainer.evaluate(test_dataloader)
 
 
 if __name__ == "__main__":
