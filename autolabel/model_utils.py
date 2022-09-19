@@ -18,8 +18,8 @@ def model_flag_parser():
     parser.add_argument('--lr', type=float, default=5e-3)
     parser.add_argument('--geometric-features', '-g', type=int, default=15)
     parser.add_argument('--encoding',
-                        default='hg',
-                        choices=['hg', 'hg+freq'],
+                        default='hg+freq',
+                        choices=['freq', 'hg', 'hg+freq'],
                         type=str,
                         help="Network positional encoding to use.")
     parser.add_argument('--features',
@@ -30,7 +30,7 @@ def model_flag_parser():
     parser.add_argument('--rgb-weight', default=1.0, type=float)
     parser.add_argument('--semantic-weight', default=1.0, type=float)
     parser.add_argument('--feature-weight', default=0.5, type=float)
-    parser.add_argument('--depth-weight', default=0.05, type=float)
+    parser.add_argument('--depth-weight', default=0.1, type=float)
     parser.add_argument('--dropout', default=0.1, type=float)
     return parser
 

@@ -12,13 +12,28 @@ import tinycudann as tcnn
 from torch_ngp.nerf.renderer import NeRFRenderer
 
 
+class FreqEncoder(nn.Module):
+
+    def __init__(self, input_dim):
+        super().__init__()
+        self.encoder = tcnn.Encoding(input_dim, {
+            "otype": "Frequency",
+            "n_frequencies": 10
+        })
+        self.n_output_dims = self.encoder.n_output_dims
+
+    def forward(self, x, bound):
+        normalized = (x + bound) / (2.0 * bound)
+        return self.encoder(normalized)
+
+
 class HGFreqEncoder(nn.Module):
 
     def __init__(self, input_dim):
         super().__init__()
         self.encoder = tcnn.Encoding(input_dim, {
             "otype": "Frequency",
-            "n_frequencies": 12
+            "n_frequencies": 2
         })
         self.grid_encoding = tcnn.Encoding(
             input_dim, {
@@ -119,7 +134,10 @@ class ALNetwork(NeRFRenderer):
                                          })
 
     def _get_encoder(self, encoding):
-        if encoding == 'hg':
+        if encoding == 'freq':
+            encoder = FreqEncoder(3)
+            return encoder, encoder.n_output_dims
+        elif encoding == 'hg':
             return get_encoder('hashgrid', desired_resolution=2**18)
         elif encoding == 'hg+freq':
             encoder = HGFreqEncoder(3)
