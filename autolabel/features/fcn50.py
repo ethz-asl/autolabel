@@ -13,25 +13,17 @@ class FCN50:
         self.model.eval()
         self.model = self.model.cuda()
         self.extractor = feature_extraction.create_feature_extractor(
-            self.model,
-            return_nodes={
-                'backbone.layer4.2.relu_2': 'features_small',
-                'backbone.layer1.2.relu_2': 'features_large'
-            })
+            self.model, return_nodes={'classifier.2': 'features'})
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                               std=[0.229, 0.224, 0.225]).cuda()
 
     @property
     def shape(self):
-        return (180, 240)
+        return (90, 120)
 
     def __call__(self, x):
         batch = self.normalize(x)
         out = self.extractor(batch)
 
-        f_small = out['features_small'][:, :256]
-        f_large = out['features_large'][:, :256]
-        f_small = F.interpolate(f_small, f_large.shape[-2:], mode='bilinear')
-        return torch.cat([f_small, f_large],
-                         dim=1).detach().cpu().half().numpy().transpose(
-                             [0, 2, 3, 1])
+        return out['features'].detach().cpu().half().numpy().transpose(
+            [0, 2, 3, 1])
