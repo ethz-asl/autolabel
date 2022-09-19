@@ -62,7 +62,7 @@ class UserSimulation:
         self.semantic_paths = dataset.scene.semantic_paths()
         self.frame_indices = np.arange(0, len(dataset.poses))
         self.evaluation_frames = np.random.choice(self.frame_indices,
-                                                  15,
+                                                  10,
                                                   replace=False)
         self.results = []  # tuple(step, annotated pixels, iou)
 
@@ -77,8 +77,7 @@ class UserSimulation:
         where_defined = gt_semantic >= 0
         where_wrong = p_semantic != gt_semantic
         for _ in range(self.clicks_per_step):
-            chosen_pixel = self._choose_pixel(
-                np.bitwise_and(where_defined, where_wrong))
+            chosen_pixel = self._choose_pixel(where_wrong, where_defined)
             # if self.visualize:
             #     show_example(p_semantic, gt_semantic, where_wrong, chosen_pixel)
             self._annotate_pixel(frame_index, chosen_pixel, gt_semantic)
@@ -102,8 +101,14 @@ class UserSimulation:
     def save(self):
         np.savetxt(self.result_path, np.array(self.results))
 
-    def _choose_pixel(self, where_wrong):
-        incorrect_indices = np.argwhere(where_wrong)
+    def _choose_pixel(self, where_wrong, where_defined):
+        where_wrong = np.bitwise_and(where_defined, where_wrong)
+        if where_wrong.sum() > 0:
+            incorrect_indices = np.argwhere(where_wrong)
+        else:
+            # If all pixels are correct, select one randomly.
+            incorrect_indices = np.argwhere(
+                np.ones_like(where_wrong, dtype=bool))
         return incorrect_indices[np.random.randint(0, len(incorrect_indices))]
 
     def _infer_semantics(self, frame_index):
@@ -214,7 +219,7 @@ def main():
 
     criterion = torch.nn.MSELoss(reduction='none')
     scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(
-        optimizer, [1, 10, 30, 50], gamma=0.5)
+        optimizer, [10], gamma=0.5)
 
     model_dir = model_utils.model_dir(flags.scene, flags)
     device = 'cuda:0'
@@ -248,17 +253,21 @@ def main():
         print("Visualizing at start")
         user.visualize_examples()
 
-    for i in range(500):
-        user.annotate()
+    annotated = 0
+    i = 0
+    while annotated < 1500:
         annotated = (dataset.semantics > 0).sum()
-        print(f"Annotation step {i}. {annotated} annotated pixels")
-        trainer.train_iterations(train_dataloader, 250)
         if i % 5 == 0:
+            if flags.vis:
+                user.visualize_examples()
             iou = user.evaluate(i, annotated)
             print(f"iou: {iou:.3f}")
 
-        if i % 10 == 0 and flags.vis:
-            user.visualize_examples()
+        user.annotate()
+        print(f"{annotated} annotated pixels")
+        trainer.train_iterations(train_dataloader, 250)
+        i += 1
+
     user.save()
 
 

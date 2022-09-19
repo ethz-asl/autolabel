@@ -33,8 +33,8 @@ def compress_features(features, dim):
     optimizer = torch.optim.Adam(coder.parameters(), lr=1e-3)
     dataset = torch.utils.data.TensorDataset(
         torch.tensor(features.reshape(N * H * W, C)))
-    loader = torch.utils.data.DataLoader(dataset, batch_size=4096, shuffle=True)
-    for _ in range(10):
+    loader = torch.utils.data.DataLoader(dataset, batch_size=2048, shuffle=True)
+    for _ in range(5):
         bar = tqdm(loader)
         for batch in bar:
             batch = batch[0].cuda()
@@ -149,6 +149,8 @@ def get_feature_extractor(features):
 
 def main():
     flags = read_args()
+    np.random.seed(0)
+    torch.manual_seed(0)
 
     scene = Scene(flags.scene)
     output_file = h5py.File(os.path.join(scene.path, 'features.hdf'),
