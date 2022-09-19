@@ -174,7 +174,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
         camera = self.scene.camera
         size = camera.size
         small_size = (int(size[0] / factor), int(size[1] / factor))
-        image_count = len(self.scene)
+        image_count = min(
+            [len(self.scene.rgb_paths()),
+             len(self.scene.depth_paths())])
         self.indices = np.arange(0, image_count)
         self.resolution = small_size[0] * small_size[1]
         self.camera = self.scene.camera.scale(small_size)

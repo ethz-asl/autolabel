@@ -14,6 +14,7 @@ def read_args():
     parser.add_argument('--batch-size', default=8182, type=int)
     parser.add_argument('--vis', action='store_true')
     parser.add_argument('--workspace', type=str, default=None)
+    parser.add_argument('--write-images', type=str, default=None)
     parser.add_argument('--out',
                         default=None,
                         type=str,
@@ -54,19 +55,21 @@ def write_results(out, results):
 
 def main(flags):
     models = gather_models(flags)
-    ious = np.zeros((len(flags.scenes), len(models)))
     classes = ["Background", "Class 1"]
     scene_names = [os.path.basename(os.path.normpath(p)) for p in flags.scenes]
+    scenes = [(s, n) for s, n in zip(flags.scenes, scene_names)]
+    scenes = sorted(scenes, key=lambda x: x[1])
+    ious = np.ones((len(scenes), len(models))) * -1.
     results = []
-    for scene_index, scene in enumerate(flags.scenes):
-        scene_name = scene_names[scene_index]
+    for scene_index, (scene, scene_name) in enumerate(scenes):
         print(f"Evaluating scene {scene_name}")
 
         nerf_dir = get_nerf_dir(scene, flags)
-        models = os.listdir(nerf_dir)
 
         for model_hash in models:
             model_path = os.path.join(nerf_dir, model_hash)
+            if not os.path.exists(model_path):
+                continue
             params = read_params(model_path)
             dataset = SceneDataset('test',
                                    scene,
@@ -80,13 +83,28 @@ def main(flags):
             model = model.eval()
 
             checkpoint_dir = os.path.join(model_path, 'checkpoints')
+            if not os.path.exists(checkpoint_dir) or len(
+                    os.listdir(checkpoint_dir)) == 0:
+                continue
+
             model_utils.load_checkpoint(model, checkpoint_dir)
             model = model.eval()
 
-            evaluator = Evaluator(model, classes)
+            save_figure_dir = None
+            if flags.write_images is not None:
+                save_figure_dir = os.path.join(flags.write_images, scene_name)
+            evaluator = Evaluator(model,
+                                  classes,
+                                  name=model_hash,
+                                  save_figures=save_figure_dir)
             model_index = models.index(model_hash)
+            assert model_index >= 0
             result = evaluator.eval(dataset, flags.vis)
+
+            if len(result.values()) == 0:
+                continue
             miou = np.mean([v for v in result.values()])
+            assert ious[scene_index, model_index] < 0.0
             ious[scene_index, model_index] = miou
             result = dict(vars(params))
             result['scene'] = scene_name
@@ -102,8 +120,8 @@ def main(flags):
     table.add_column('Scene')
     for model in models:
         table.add_column(model)
-    for scene_name, results in zip(scene_names, ious):
-        table.add_row(scene_name, *[f"{v:.03f}" for v in results])
+    for scene_name, scene_ious in zip(scene_names, ious):
+        table.add_row(scene_name, *[f"{v:.03f}" for v in scene_ious])
     total_row = ['Total'] + [f"{v:.03f}" for v in ious.mean(axis=0)]
     table.add_row(*total_row, end_section=True)
 

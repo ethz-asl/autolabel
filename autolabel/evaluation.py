@@ -1,5 +1,8 @@
 import torch
 import numpy as np
+import os
+import cv2
+from PIL import Image
 from tqdm import tqdm
 from autolabel.constants import COLORS
 from rich.progress import track
@@ -17,10 +20,17 @@ def compute_iou(p_semantic, gt_semantic, class_index):
 
 class Evaluator:
 
-    def __init__(self, model, classes, device='cuda:0'):
+    def __init__(self,
+                 model,
+                 classes,
+                 device='cuda:0',
+                 name="model",
+                 save_figures=None):
         self.model = model
         self.classes = classes
         self.device = device
+        self.name = name
+        self.save_figures = save_figures
 
     def eval(self, dataset, visualize=False):
         with torch.inference_mode():
@@ -44,7 +54,7 @@ class Evaluator:
             p_semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
             for class_index in range(1, len(self.classes)):
                 if visualize:
-                    self._visualize_frame(batch, outputs, gt_semantic)
+                    self._visualize_frame(batch, outputs, gt_semantic, index)
                 iou = compute_iou(p_semantic, gt_semantic, class_index)
                 scores = ious.get(class_index, [])
                 scores.append(iou)
@@ -54,14 +64,25 @@ class Evaluator:
             ious[key] = np.mean(scores)
         return ious
 
-    def _visualize_frame(self, batch, outputs, gt_semantic):
+    def _visualize_frame(self, batch, outputs, gt_semantic, example_index):
         semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
         from matplotlib import pyplot
         rgb = (batch['pixels'] * 255).astype(np.uint8)
         axis = pyplot.subplot2grid((1, 2), loc=(0, 0))
         axis.imshow(rgb)
-        axis.imshow(COLORS[semantic], alpha=0.5)
+        p_semantic = COLORS[semantic]
+        axis.imshow(p_semantic, alpha=0.5)
+        axis.set_title(self.name)
         axis = pyplot.subplot2grid((1, 2), loc=(0, 1))
         axis.imshow(COLORS[gt_semantic])
+        axis.set_title("GT")
         pyplot.tight_layout()
         pyplot.show()
+
+        if self.save_figures is not None:
+            if not os.path.exists(self.save_figures):
+                os.makedirs(self.save_figures, exist_ok=True)
+            save_path = os.path.join(self.save_figures,
+                                     self.name + f"_{example_index}.jpg")
+            image = cv2.addWeighted(rgb, 0.5, p_semantic, 0.5, 0.0)
+            Image.fromarray(image).save(save_path)
