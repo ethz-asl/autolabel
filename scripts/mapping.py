@@ -285,7 +285,11 @@ class PoseSaver:
         pc = o3d.geometry.PointCloud()
         depth_frames = dict([(os.path.basename(p).split('.')[0], p)
                              for p in self.scene.depth_paths()])
-        for key, T_WC in poses.items():
+        items = [item for item in poses.items()]
+        stride = max(len(self.scene.depth_paths()) // 100, 1)
+        for key, T_WC in items[::stride]:
+            if key not in depth_frames:
+                continue
             depth = o3d.io.read_image(f"{depth_frames[key]}")
 
             pc_C = o3d.geometry.PointCloud.create_from_depth_image(
