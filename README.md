@@ -64,6 +64,16 @@ If you have a LiDAR enabled iOS device, you can use the [Stray Scanner](https://
 
 To fit the representation to the scene without the user interface, you can run `scripts/train.py`. Checkpoints and metadata data will be stored in the scene folder under the `nerf` directory.
 
+
+To use pretrained features as additional training supervision, pretrain on these and then open the scene in the GUI, run:
+```
+python scripts/compute_feature_maps.py --features dino --autoencode <scene>
+python scripts/train.py --features dino <scene>
+python scripts/gui.py --features dino <scene>
+```
+
+The models are saved in the scene folder under the `nerf` directory, organized according to the given parameters. I.e. the gui will load the model which matches the given parameters. If one is not found, it will simply randomly initialize the network.
+
 ## Installing
 
 The installation instructions were tested for Python 3.8 and 3.9.
@@ -121,4 +131,6 @@ First, install `google/yapf` as a vim plugin. If using Vundle, add `Plugin 'goog
 Copy the file `.yapf.vim` to `$HOME/.vim/autoload/yapf.vim`, creating the autoload directory if it doesn't exist.
 
 To run yapf on save for Python files, add `autocmd FileType python autocmd BufWritePre <buffer> call yapf#YAPF()` to your `.vimrc` then restart vim.
+
+
 
