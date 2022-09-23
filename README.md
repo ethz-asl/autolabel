@@ -2,6 +2,8 @@
 
 The goal of this project is to provide accurate ground truth data for RGB-D sensor streams.
 
+https://user-images.githubusercontent.com/1204635/191912816-0de3791c-d29b-458a-aead-ba020a0cc871.mp4
+
 ## User interface
 
 The main way to interact with this project is through the graphical user interface.
