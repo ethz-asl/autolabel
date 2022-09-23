@@ -202,7 +202,8 @@ class SceneViewer(QWidget):
         self.canvas.set_inferred(payload['semantic'].numpy())
         self.images_view.set_color(payload['rgb'].numpy())
         self.images_view.set_depth(payload['depth'].numpy())
-        self.images_view.set_features(payload['features'])
+        if payload['features'] is not None:
+            self.images_view.set_features(payload['features'])
 
     def _canvas_callback(self):
         # Called when the mouse button is lifted on the canvas.

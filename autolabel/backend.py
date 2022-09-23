@@ -76,7 +76,11 @@ class TrainingLoop:
                                           use_checkpoint='latest')
 
     def _load_pca(self):
-        with h5py.File(os.path.join(self.scene_path, 'features.hdf'), 'r') as f:
+        feature_path = os.path.join(self.scene_path, 'features.hdf')
+        if self.flags.features is None or not os.path.exists(feature_path):
+            self.pca = None
+            return
+        with h5py.File(feature_path, 'r') as f:
             features = f[f'features/{self.flags.features}']
             blob = features.attrs['pca'].tobytes()
             self.pca = pickle.loads(blob)
@@ -128,12 +132,15 @@ class TrainingLoop:
         self.model.train()
         semantic = p_semantic[0].argmax(dim=-1).detach().cpu()
 
-        features = p_features.detach().cpu().numpy()
-        H, W, C = features.shape
-        features = self.pca.transform(features.reshape(H * W, C))
-        features = np.clip((features - self.feature_min) / self.feature_range,
-                           0., 1.)
-        features = features.reshape(H, W, 3)
+        if self.pca is not None:
+            features = p_features.detach().cpu().numpy()
+            H, W, C = features.shape
+            features = self.pca.transform(features.reshape(H * W, C))
+            features = np.clip(
+                (features - self.feature_min) / self.feature_range, 0., 1.)
+            features = features.reshape(H, W, 3)
+        else:
+            features = None
 
         self.log(f"Sending {image_index}")
         self.connection.send(("image", {
@@ -149,8 +156,7 @@ class TrainingLoop:
 
     def _save_checkpoint(self):
         checkpoint_path = os.path.join(self.workspace, 'checkpoints')
-        name = self.trainer.name
-        checkpoint_path = os.path.join(checkpoint_path, f"{name}.pth")
+        checkpoint_path = os.path.join(checkpoint_path, f"best.pth")
         state = {}
         state['model'] = self.model.state_dict()
         state['optimizer'] = self.trainer.optimizer.state_dict()
