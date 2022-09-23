@@ -14,16 +14,19 @@ Run the user interface with `python scripts/gui.py <scene>`
 
 The scene directory structure is as follows:
 ```
+raw_rgb/        # Raw distorted color frames.
 rgb/            # Undistorted color frames either as png or jpg.
   00000.jpg
   00001.jpg
   ...
-raw_rgb/        # Raw distorted color frames.
-depth/          # 16 bit grayscale png images where values are in millimeters.
-  00000.png     # Depth frames might be smaller in size than the rgb frames.
-  00001.png     # Undistorted to match a perfect pinhole camera model.
-  ...
 raw_depth/      # Raw original distorted depth frames.
+  00000.png     # 16 bit grayscale png images where values are in millimeters.
+  00001.png     # Depth frames might be smaller in size than the rgb frames.
+  ...
+depth/          # Undistorted frames to match a perfect pinhole camera model.
+  00000.png
+  00001.png
+  ...
 pose/
   00000.txt       # 4 x 4 world to camera transform.
   00001.txt
@@ -53,6 +56,9 @@ The computed outputs are:
 - `intrinsics.txt` inferred camera intrinsic parameters
 - `bbox.txt` scene bounds
 
+### Recording data
+
+If you have a LiDAR enabled iOS device, you can use the [Stray Scanner](https://apps.apple.com/us/app/stray-scanner/id1557051662) app to record data. The script at `scripts/convert_scanner.py` will allow you to convert a scene recorded using the app to the above format. You can then run the `mapping.py` script to run structure from motion and compute the other outputs.
 
 ## Pretraining on a scene
 
