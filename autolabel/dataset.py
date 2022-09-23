@@ -158,6 +158,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
                  split,
                  scene,
                  factor=4.0,
+                 size=None,
                  batch_size=4096,
                  lazy=False,
                  features=None,
@@ -172,8 +173,11 @@ class SceneDataset(torch.utils.data.IterableDataset):
         self.features = None
         self.load_semantic = load_semantic
         camera = self.scene.camera
-        size = camera.size
-        small_size = (int(size[0] / factor), int(size[1] / factor))
+        if size is not None:
+            small_size = size
+        else:
+            size = camera.size
+            small_size = (int(size[0] / factor), int(size[1] / factor))
         image_count = min(
             [len(self.scene.rgb_paths()),
              len(self.scene.depth_paths())])

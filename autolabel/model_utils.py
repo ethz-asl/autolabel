@@ -1,13 +1,18 @@
 import torch
 import glob
 import argparse
+import pickle
 import os
 from autolabel.models import ALNetwork
 
 
 def load_checkpoint(model, checkpoint_dir, device='cuda:0'):
     checkpoint_list = sorted(glob.glob(f'{checkpoint_dir}/*.pth'))
-    checkpoint = checkpoint_list[-1]
+    best = [c for c in checkpoint_list if 'best.pth' in c]
+    if len(best) != 0:
+        checkpoint = best[0]
+    else:
+        checkpoint = checkpoint_list[-1]
     checkpoint_dict = torch.load(checkpoint, map_location=device)
     model.load_state_dict(checkpoint_dict['model'])
     return model
@@ -68,3 +73,8 @@ def create_model(min_bounds, max_bounds, n_classes, flags):
                      cuda_ray=False,
                      density_scale=1,
                      semantic_classes=n_classes)
+
+
+def read_params(workspace):
+    with open(os.path.join(workspace, 'params.pkl'), 'rb') as f:
+        return pickle.load(f)

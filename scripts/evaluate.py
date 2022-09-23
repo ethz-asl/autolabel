@@ -1,6 +1,5 @@
 import argparse
 import os
-import pickle
 import numpy as np
 import json
 from autolabel.evaluation import Evaluator
@@ -43,11 +42,6 @@ def gather_models(flags):
     return list(models)
 
 
-def read_params(workspace):
-    with open(os.path.join(workspace, 'params.pkl'), 'rb') as f:
-        return pickle.load(f)
-
-
 def write_results(out, results):
     with open(out, 'wt') as f:
         f.write(json.dumps(results, indent=2))
@@ -70,7 +64,7 @@ def main(flags):
             model_path = os.path.join(nerf_dir, model_hash)
             if not os.path.exists(model_path):
                 continue
-            params = read_params(model_path)
+            params = model_utils.read_params(model_path)
             dataset = SceneDataset('test',
                                    scene,
                                    factor=4.0,

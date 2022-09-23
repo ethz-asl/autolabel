@@ -2,6 +2,7 @@ import argparse
 import os
 import random
 import numpy as np
+from autolabel import visualization
 from PIL import Image
 from PIL.ImageQt import fromqimage, ImageQt
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
@@ -58,8 +59,8 @@ class ImagesView(QtWidgets.QHBoxLayout):
 
     def __init__(self, canvas, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        image_size = (int(canvas.canvas_width / 2),
-                      int(canvas.canvas_height / 2))
+        image_size = (480, 320)
+        self.image_width = image_size[0]
         size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
                                             QtWidgets.QSizePolicy.Expanding)
         size_policy.setHeightForWidth(True)
@@ -99,22 +100,22 @@ class ImagesView(QtWidgets.QHBoxLayout):
         self.addLayout(self.images_layout)
 
     def set_color(self, nparray):
-        qimage = ImageQt(Image.fromarray((nparray * 255).astype(np.uint8)))
+        qimage = ImageQt(
+            Image.fromarray((nparray * 255).astype(np.uint8)).reduce(2))
         self.color = QtGui.QPixmap.fromImage(qimage)
         self.rgb_view.setPixmap(self.color)
         self.rgb_view.repaint()
 
     def set_depth(self, nparray):
-        normalized_depth = 1.0 - np.clip(nparray, 0.0, 10.0) / 10.0
-        qimage = ImageQt(
-            Image.fromarray(
-                (cm.inferno(normalized_depth) * 255).astype(np.uint8)))
+        image = visualization.visualize_depth(nparray)
+        qimage = ImageQt(Image.fromarray(image))
         self.depth = QtGui.QPixmap.fromImage(qimage)
         self.depth_view.setPixmap(self.depth)
         self.depth_view.repaint()
 
     def set_features(self, nparray):
-        qimage = ImageQt(Image.fromarray((nparray * 255).astype(np.uint8)))
+        image = Image.fromarray((nparray * 255).astype(np.uint8)).reduce(2)
+        qimage = ImageQt(image)
         self.features = QtGui.QPixmap.fromImage(qimage)
         self.feature_view.setPixmap(self.features)
         self.feature_view.repaint()
@@ -138,11 +139,11 @@ class SceneViewer(QWidget):
         self.rgb_paths = self.scene.rgb_paths()
         self._image_cache = {}
         self._drawings = {}
-        self.setWindowTitle("Scene Viewer")
+        self.setWindowTitle("Autolabel")
 
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.slider.setMinimum(0)
-        self.slider.setMaximum(len(self.scene) - 1)
+        self.slider.setMaximum(len(self.scene.rgb_paths()) - 1)
         self.slider.valueChanged.connect(self._slider_value_change)
 
         size = self.scene.camera.size
