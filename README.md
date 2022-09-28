@@ -132,5 +132,6 @@ Copy the file `.yapf.vim` to `$HOME/.vim/autoload/yapf.vim`, creating the autolo
 
 To run yapf on save for Python files, add `autocmd FileType python autocmd BufWritePre <buffer> call yapf#YAPF()` to your `.vimrc` then restart vim.
 
+## Research Papers
 
-
+Baking in the Feature: Accelerating Volumetric Segmentation by Rendering Feature Maps - [Link](https://keke.dev/baking-in-the-feature)
