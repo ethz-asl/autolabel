@@ -8,6 +8,19 @@ The main way to interact with this project is through the graphical user interfa
 
 Run the user interface with `python scripts/gui.py <scene>`
 
+### Keybindings
+
+The GUI can be controlled with the following keybindings:
+
+| Key          | Class Name                    |
+| ------------ | ----------------------------- |
+| `0`          | select foreground paint brush |
+| `1`          | select background paint brush |
+| `esc` or `Q` | shutdown application          |
+| `S`          | save image                    |
+| `C`          | clear image                   |
+
+
 ## Scene directory structure
 
 The scene directory structure is as follows:
