@@ -5,8 +5,8 @@ import numpy as np
 from autolabel import visualization
 from PIL import Image
 from PIL.ImageQt import fromqimage, ImageQt
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
-from PyQt5 import QtWidgets, QtCore, QtGui, Qt
+from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
+from PyQt6 import QtWidgets, QtCore, QtGui
 from torch import multiprocessing
 from torch.multiprocessing import Process
 import signal
@@ -16,7 +16,7 @@ from autolabel.backend import TrainingLoop
 from autolabel.ui.canvas import Canvas, ALPHA
 from matplotlib import cm
 
-NUM_KEYS = [QtCore.Qt.Key_0, QtCore.Qt.Key_1]
+NUM_KEYS = [QtCore.Qt.Key.Key_0, QtCore.Qt.Key.Key_1]
 INFERENCE_UPDATE_INTERVAL = 5000
 
 
@@ -61,12 +61,14 @@ class ImagesView(QtWidgets.QHBoxLayout):
         super().__init__(*args, **kwargs)
         image_size = (480, 320)
         self.image_width = image_size[0]
-        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                            QtWidgets.QSizePolicy.Expanding)
+        size_policy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding)
         size_policy.setHeightForWidth(True)
         size_policy.setWidthForHeight(True)
-        small_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                             QtWidgets.QSizePolicy.Expanding)
+        small_policy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding)
         small_policy.setWidthForHeight(True)
         small_policy.setHeightForWidth(True)
 
@@ -141,7 +143,7 @@ class SceneViewer(QWidget):
         self._drawings = {}
         self.setWindowTitle("Autolabel")
 
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.slider.setMinimum(0)
         self.slider.setMaximum(len(self.scene.rgb_paths()) - 1)
         self.slider.valueChanged.connect(self._slider_value_change)
@@ -226,7 +228,7 @@ class SceneViewer(QWidget):
         if drawing is None:
             drawing = QtGui.QImage(self.canvas.canvas_width,
                                    self.canvas.canvas_height,
-                                   QtGui.QImage.Format_RGB888)
+                                   QtGui.QImage.Format.Format_RGB888)
             drawing.fill(0)
             self._drawings[self.current_image] = drawing
         image = self._image_cache[self.current_image]
@@ -238,13 +240,13 @@ class SceneViewer(QWidget):
     def keyPressEvent(self, event):
         key = event.key()
         modifiers = QtWidgets.QApplication.keyboardModifiers()
-        if key == QtCore.Qt.Key_Escape or key == QtCore.Qt.Key_Q:
+        if key == QtCore.Qt.Key.Key_Escape or key == QtCore.Qt.Key.Key_Q:
             self.shutdown()
         elif key in NUM_KEYS:
             self.set_class(NUM_KEYS.index(key))
-        elif key == QtCore.Qt.Key_S and modifiers == QtCore.Qt.ControlModifier:
+        elif key == QtCore.Qt.Key.Key_S and modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
             self.save()
-        elif key == QtCore.Qt.Key_C:
+        elif key == QtCore.Qt.Key.Key_C:
             self.clear_image()
 
     def save(self):
@@ -278,7 +280,7 @@ class SceneViewer(QWidget):
     def clear_image(self):
         drawing = QtGui.QImage(self.canvas.canvas_width,
                                self.canvas.canvas_height,
-                               QtGui.QImage.Format_Grayscale8)
+                               QtGui.QImage.Format.Format_Grayscale8)
         drawing.fill(0)
         self._drawings[self.current_image] = drawing
         self._set_image(self.current_image_index)

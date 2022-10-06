@@ -1,8 +1,8 @@
 import numpy as np
 from PIL import Image
 from PIL.ImageQt import ImageQt, fromqimage
-from PyQt5.QtWidgets import QWidget
-from PyQt5 import QtWidgets, QtCore, QtGui, Qt
+from PyQt6.QtWidgets import QWidget
+from PyQt6 import QtWidgets, QtCore, QtGui
 from autolabel.constants import COLORS
 
 ALPHA = 175
@@ -29,7 +29,8 @@ class Canvas(QWidget):
         self.g_view = QtWidgets.QGraphicsView(self)
         self.g_view.setSceneRect(0, 0, self.canvas_width, self.canvas_height)
         self.g_view.setBackgroundBrush(
-            QtGui.QBrush(QtGui.QColor(52, 52, 52), QtCore.Qt.SolidPattern))
+            QtGui.QBrush(QtGui.QColor(52, 52, 52),
+                         QtCore.Qt.BrushStyle.SolidPattern))
         self.g_scene = QtWidgets.QGraphicsScene(0, 0, width, height)
         self.g_view.setScene(self.g_scene)
         self.g_view.mousePressEvent = self._mouse_down
@@ -60,7 +61,7 @@ class Canvas(QWidget):
         self.callback()
 
     def _mouse_move(self, event):
-        if event.buttons() & QtCore.Qt.LeftButton and self.active:
+        if event.buttons() & QtCore.Qt.MouseButton.LeftButton and self.active:
             self._draw_line(self.lastpoint, self._scale(event.pos()))
             self.lastpoint = self._scale(event.pos())
             self._changed()
@@ -122,15 +123,18 @@ class Canvas(QWidget):
         bitpen = QtGui.QPen(
             QtGui.QColor(self.active_class + 1, self.active_class + 1,
                          self.active_class + 1), self.brush_size,
-            QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
-        color_pen = QtGui.QPen(self.color, self.brush_size, QtCore.Qt.SolidLine,
-                               QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
+            QtCore.Qt.PenStyle.SolidLine, QtCore.Qt.PenCapStyle.RoundCap,
+            QtCore.Qt.PenJoinStyle.RoundJoin)
+        color_pen = QtGui.QPen(self.color, self.brush_size,
+                               QtCore.Qt.PenStyle.SolidLine,
+                               QtCore.Qt.PenCapStyle.RoundCap,
+                               QtCore.Qt.PenJoinStyle.RoundJoin)
         self.bitmap_painter.setPen(bitpen)
         self.bitmap_painter.setCompositionMode(
-            QtGui.QPainter.CompositionMode_Source)
+            QtGui.QPainter.CompositionMode.CompositionMode_Source)
         self.color_painter.setPen(color_pen)
         self.color_painter.setCompositionMode(
-            QtGui.QPainter.CompositionMode_Source)
+            QtGui.QPainter.CompositionMode.CompositionMode_Source)
 
     def set_inferred(self, image):
         image = COLORS[image]
@@ -157,4 +161,4 @@ class Canvas(QWidget):
         self.g_view.setFixedWidth(size.width())
         self.g_view.setFixedHeight(size.height())
         self.g_view.fitInView(0, 0, self.canvas_width, self.canvas_height,
-                              QtCore.Qt.KeepAspectRatio)
+                              QtCore.Qt.AspectRatioMode.KeepAspectRatio)
