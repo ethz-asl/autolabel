@@ -56,6 +56,19 @@ python scripts/train.py bench --features dino
 python scripts/gui.py bench --features dino
 ```
 
+### Keybindings
+
+The GUI can be controlled with the following keybindings:
+
+| Key          | Class Name                    |
+| ------------ | ----------------------------- |
+| `0`          | select foreground paint brush |
+| `1`          | select background paint brush |
+| `esc` or `Q` | shutdown application          |
+| `S`          | save image                    |
+| `C`          | clear image                   |
+
+
 ## Scene directory structure
 
 The scene directory structure is as follows:
@@ -90,7 +103,7 @@ nerf/             # Contains NeRF checkpoints and training metadata.
 
 ## Computing camera poses
 
-The script [`script/mapping.py`](script/mapping.py) defines a mapping pipeline which will compute camera poses for your scene. The required input files are:
+The script [`scripts/mapping.py`](scripts/mapping.py) defines a mapping pipeline which will compute camera poses for your scene. The required input files are:
 - `raw_rgb/` images
 - `raw_depth/` frames
 - `intrinsics.txt` camera intrinsic parameters
