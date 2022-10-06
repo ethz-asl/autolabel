@@ -62,10 +62,10 @@ The GUI can be controlled with the following keybindings:
 
 | Key          | Class Name                    |
 | ------------ | ----------------------------- |
-| `0`          | select foreground paint brush |
-| `1`          | select background paint brush |
+| `0`          | select background paint brush |
+| `1`          | select foreground paint brush |
 | `esc` or `Q` | shutdown application          |
-| `S`          | save image                    |
+| `ctrl+S`     | save model                    |
 | `C`          | clear image                   |
 
 
