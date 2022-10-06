@@ -4,11 +4,57 @@ The goal of this project is to provide accurate ground truth data for RGB-D sens
 
 https://user-images.githubusercontent.com/1204635/191912816-0de3791c-d29b-458a-aead-ba020a0cc871.mp4
 
-## User interface
+## Getting started
 
-The main way to interact with this project is through the graphical user interface.
+### Installing
 
-Run the user interface with `python scripts/gui.py <scene>`
+The installation instructions were tested for Python 3.8 and 3.9.
+Some dependencies are recommended to be installed through Anaconda. In your Anaconda env, you can install them with:
+```
+conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
+```
+
+Install into your desired python environment with the following commands:
+```
+pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+git clone --recursive https://github.com/francescomilano172/Hierarchical-Localization
+pushd Hierarchical-Localization/
+git checkout feature/arbitrary_camera_model
+python -m pip install -e .
+popd
+
+git submodule update --init --recursive
+pushd torch_ngp
+pip install -e .
+bash scripts/install_ext.sh
+popd
+
+pip install torch-scatter -f https://data.pyg.org/whl/torch-1.12.0+cu113.html
+
+pip install -e .
+```
+
+### Usage
+
+After installing the project using the instructions above, you can follow these steps to run autolabel on an example scene.
+
+```
+# Download example scene
+wget http://robotics.ethz.ch/~asl-datasets/2022_autolabel/bench.tar.gz
+# Uncompress
+tar -xvf bench.tar.gz
+
+# Compute camera poses, scene bounds and undistort images using raw input images
+python scripts/mapping.py bench
+
+# Compute DINO features from color images.
+python scripts/compute_feature_maps.py bench --features dino --autoencode
+# Pretrain neural representation on color, depth and extracted features
+python scripts/train.py bench --features dino
+
+# Open the scene in the graphical user interface for annotation
+python scripts/gui.py bench --features dino
+```
 
 ## Scene directory structure
 
@@ -74,33 +120,6 @@ python scripts/gui.py --features dino <scene>
 
 The models are saved in the scene folder under the `nerf` directory, organized according to the given parameters. I.e. the gui will load the model which matches the given parameters. If one is not found, it will simply randomly initialize the network.
 
-## Installing
-
-The installation instructions were tested for Python 3.8 and 3.9.
-Some dependencies are recommended to be installed through Anaconda. In your Anaconda env, you can install them with:
-```
-conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
-```
-
-Install into your desired python environment with the following commands:
-```
-pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-git clone --recursive https://github.com/francescomilano172/Hierarchical-Localization
-pushd Hierarchical-Localization/
-git checkout feature/arbitrary_camera_model
-python -m pip install -e .
-popd
-
-git submodule update --init --recursive
-pushd torch_ngp
-pip install -e .
-bash scripts/install_ext.sh
-popd
-
-pip install torch-scatter -f https://data.pyg.org/whl/torch-1.12.0+cu113.html
-
-pip install -e .
-```
 
 ## Evaluating against ground truth frames
 
