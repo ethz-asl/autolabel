@@ -25,6 +25,7 @@ popd
 
 git submodule update --init --recursive
 pushd torch_ngp
+git submodule update --init --recursive
 pip install -e .
 bash scripts/install_ext.sh
 popd
