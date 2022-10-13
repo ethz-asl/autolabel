@@ -8,8 +8,14 @@ https://user-images.githubusercontent.com/1204635/191912816-0de3791c-d29b-458a-a
 
 ### Installing
 
-The installation instructions were tested for Python 3.8 and 3.9.
-Some dependencies are recommended to be installed through Anaconda. In your Anaconda env, you can install them with:
+The installation instructions were tested for Python 3.8 and 3.9. Some dependencies are recommended to be installed through Anaconda and we assume you are using an Anaconda environment for these instructions.
+
+The software uses CUDA and compiling `tiny-cuda-nn` requires `nvcc`. If you don't have cuda >= version 11.3, including `nvcc`, installed on your system, you can install it in your anaconda env with:
+```
+conda install -c conda-forge cudatoolkit-dev=11.4
+```
+
+To install Pytorch, run:
 ```
 conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
 ```
