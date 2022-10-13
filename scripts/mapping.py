@@ -60,15 +60,20 @@ class HLoc:
                                 self.sfm_pairs,
                                 features=self.features,
                                 matches=self.matches)
-            model = reconstruction.main(self.tmp_dir,
-                                        image_dir,
-                                        self.sfm_pairs,
-                                        self.features,
-                                        self.matches,
-                                        image_list=image_list_path,
-                                        camera_mode=pycolmap.CameraMode.SINGLE,
-                                        camera_model="OPENCV",
-                                        ba_refine_principal_point=True)
+            model = reconstruction.main(
+                self.tmp_dir,
+                image_dir,
+                self.sfm_pairs,
+                self.features,
+                self.matches,
+                image_list=image_list_path,
+                camera_mode=pycolmap.CameraMode.SINGLE,
+                image_options={'camera_model': "OPENCV"},
+                mapper_options={
+                    'ba_refine_principal_point': True,
+                    'ba_refine_extra_params': True,
+                    'ba_refine_focal_length': True
+                })
         else:
             retrieval_path = extract_features.main(self.retrieval_conf,
                                                    image_dir,
@@ -86,15 +91,20 @@ class HLoc:
                                              self.feature_conf['output'],
                                              self.tmp_dir,
                                              matches=self.matches)
-            model = reconstruction.main(self.tmp_dir,
-                                        image_dir,
-                                        self.sfm_pairs,
-                                        feature_path,
-                                        match_path,
-                                        image_list=image_list_path,
-                                        camera_mode=pycolmap.CameraMode.SINGLE,
-                                        camera_model="OPENCV",
-                                        ba_refine_principal_point=True)
+            model = reconstruction.main(
+                self.tmp_dir,
+                image_dir,
+                self.sfm_pairs,
+                feature_path,
+                match_path,
+                image_list=image_list_path,
+                camera_mode=pycolmap.CameraMode.SINGLE,
+                image_options={'camera_model': "OPENCV"},
+                mapper_options={
+                    'ba_refine_principal_point': True,
+                    'ba_refine_extra_params': True,
+                    'ba_refine_focal_length': True
+                })
 
         if self.flags.vis:
             fig = viz_3d.init_figure()
