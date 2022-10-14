@@ -67,14 +67,6 @@ def extract_features(extractor, scene, output_file, flags):
             image = F.interpolate(image, [720, 960])
             features = extractor(image / 255.)
 
-            # if flags.vis:
-            #     from matplotlib import pyplot
-            #     _, axis = pyplot.subplots(2)
-            #     axis[0].imshow(image[0].cpu().numpy().transpose([1, 2, 0]))
-            #     axis[1].imshow(features[0].sum(axis=-1))
-            #     pyplot.tight_layout()
-            #     pyplot.show()
-
             extracted += [f for f in features]
     extracted = np.stack(extracted)
 

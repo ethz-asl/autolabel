@@ -34,12 +34,6 @@ def read_args():
     return parser.parse_args()
 
 
-def write_params(workspace, flags):
-    os.makedirs(workspace, exist_ok=True)
-    with open(os.path.join(workspace, 'params.pkl'), 'wb') as f:
-        pickle.dump(flags, f)
-
-
 def main():
     flags = read_args()
 
@@ -90,7 +84,7 @@ def main():
 
     epochs = int(np.ceil(flags.iters / 1000))
     model_dir = model_utils.model_dir(flags.scene, flags)
-    write_params(model_dir, flags)
+    model_utils.write_params(model_dir, flags)
     trainer = SimpleTrainer('ngp',
                             opt,
                             model,

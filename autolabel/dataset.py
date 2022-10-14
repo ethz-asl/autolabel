@@ -247,7 +247,6 @@ class SceneDataset(torch.utils.data.IterableDataset):
             ray_d[start:end] = self._compute_direction(image_index,
                                                        ray_indices,
                                                        randomize=True)
-            # ray_d[start:end] = self.directions[image_index][ray_indices]
 
             if self.features is not None:
                 width = int(self.w)
@@ -331,7 +330,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
                 depths.append(depth)
 
         if self.lazy:
-            self.images = LazyImageLoader(images, self.camera.size)
+            self.images = LazyImageLoader(images,
+                                          self.camera.size,
+                                          interpolation=cv2.INTER_NEAREST)
             self.depths = LazyImageLoader(depths,
                                           self.camera.size,
                                           interpolation=cv2.INTER_NEAREST)

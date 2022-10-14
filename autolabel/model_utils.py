@@ -78,3 +78,9 @@ def create_model(min_bounds, max_bounds, n_classes, flags):
 def read_params(workspace):
     with open(os.path.join(workspace, 'params.pkl'), 'rb') as f:
         return pickle.load(f)
+
+
+def write_params(workspace, flags):
+    os.makedirs(workspace, exist_ok=True)
+    with open(os.path.join(workspace, 'params.pkl'), 'wb') as f:
+        pickle.dump(flags, f)

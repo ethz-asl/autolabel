@@ -78,8 +78,6 @@ class UserSimulation:
         where_wrong = p_semantic != gt_semantic
         for _ in range(self.clicks_per_step):
             chosen_pixel = self._choose_pixel(where_wrong, where_defined)
-            # if self.visualize:
-            #     show_example(p_semantic, gt_semantic, where_wrong, chosen_pixel)
             self._annotate_pixel(frame_index, chosen_pixel, gt_semantic)
         self.dataset.update_sampler()
 
