@@ -15,9 +15,10 @@ The software uses CUDA and compiling `tiny-cuda-nn` requires `nvcc`. If you don'
 conda install -c conda-forge cudatoolkit-dev=11.4
 ```
 
-To install Pytorch, run:
+To install Pytorch and ffmpeg, run:
 ```
 conda install pytorch torchvision cudatoolkit=11.3 -c pytorch
+conda install ffmpeg
 ```
 
 Install into your desired python environment with the following commands:
@@ -35,8 +36,6 @@ git submodule update --init --recursive
 pip install -e .
 bash scripts/install_ext.sh
 popd
-
-pip install torch-scatter -f https://data.pyg.org/whl/torch-1.12.0+cu113.html
 
 pip install -e .
 ```
@@ -61,6 +60,15 @@ python scripts/train.py bench --features dino
 
 # Open the scene in the graphical user interface for annotation
 python scripts/gui.py bench --features dino
+```
+
+Once you have annotated a scene, you can train some more on the annotations and render a video of the annotations:
+```
+# Train some more on given annotations
+python scripts/train.py bench --features dino
+
+# Render a video of annotations and features
+python scripts/render.py bench --model-dir bench/nerf/g15_hg+freq_dino_rgb1.0_d0.1_s1.0_f0.5_do0.1/ --out bench.mp4
 ```
 
 ### Keybindings

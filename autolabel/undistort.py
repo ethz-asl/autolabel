@@ -3,14 +3,6 @@ import sys
 import cv2
 
 
-@jit(nopython=True)
-def _undistort(K: np.ndarray, D: np.ndarray, grid: np.ndarray) -> np.ndarray:
-    out = np.zeros((grid.shape[0], 2), dtype=np.float64)
-    for i in range(grid.shape[0]):
-        out[i, :] = _iterative_camera_undistortion(K, D, grid[i, 0], grid[i, 1])
-    return out
-
-
 class ImageUndistorter:
     """Undistorts images
 

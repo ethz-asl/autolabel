@@ -51,7 +51,8 @@ class Scene:
         self._read_poses()
         intrinsics_path = os.path.join(scene_path, 'intrinsics.txt')
         image_size = self._peak_image_size()
-        self.camera = Camera.from_path(intrinsics_path, image_size)
+        if os.path.exists(intrinsics_path):
+            self.camera = Camera.from_path(intrinsics_path, image_size)
         self._n_classes = None
 
     def _peak_image_size(self):

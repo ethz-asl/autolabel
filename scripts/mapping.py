@@ -352,6 +352,10 @@ class Pipeline:
     def run(self):
         hloc = HLoc(self.tmp_dir, self.scene, self.flags)
         hloc.run()
+
+        # Camera intrinsics might have changed so reload the scene.
+        self.scene = Scene(self.scene.path)
+
         scale_estimation = ScaleEstimation(self.scene, self.tmp_dir)
         scaled_poses = scale_estimation.run()
         pose_saver = PoseSaver(self.scene, scaled_poses)
