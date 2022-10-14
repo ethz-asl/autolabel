@@ -289,6 +289,7 @@ class PoseSaver:
         stride = max(len(self.scene.depth_paths()) // 100, 1)
         for key, T_WC in items[::stride]:
             if key not in depth_frames:
+                print("WARNING: Can't find depth image {key}.png")
                 continue
             depth = o3d.io.read_image(f"{depth_frames[key]}")
 
