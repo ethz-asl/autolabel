@@ -50,12 +50,12 @@ class Scene:
         self.pose_path = os.path.join(scene_path, 'pose')
         self._read_poses()
         intrinsics_path = os.path.join(scene_path, 'intrinsics.txt')
-        image_size = self._peak_image_size()
+        image_size = self.peak_image_size()
         if os.path.exists(intrinsics_path):
             self.camera = Camera.from_path(intrinsics_path, image_size)
         self._n_classes = None
 
-    def _peak_image_size(self):
+    def peak_image_size(self):
         if os.path.exists(self.raw_rgb_path):
             path = self.raw_rgb_path
         elif os.path.exists(self.rgb_path):
