@@ -68,8 +68,10 @@ Once you have annotated a scene, you can train some more on the annotations and 
 python scripts/train.py bench --features dino
 
 # Export labels for learning on some downstream task.
+# The objects flag is optional, but tells it how many objects are in the scene per class.
+# It is used to remove noise from the produced segmentation maps.
 # Labels are saved at bench/output/semantic.
-python scripts/export.py bench
+python scripts/export.py bench --objects 1
 
 # Render a video of annotations and features
 python scripts/render.py bench --model-dir bench/nerf/g15_hg+freq_dino_rgb1.0_d0.1_s1.0_f0.5_do0.1/ --out bench.mp4

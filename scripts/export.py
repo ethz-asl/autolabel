@@ -11,21 +11,14 @@ params:
 Output frames are saved at <scene>/output/semantic/
 """
 import os
-import math
-import argparse
-from os import path
-import csv
 import cv2
 import numpy as np
 import torch
+from skimage import measure
 from autolabel.utils import Scene
 from tqdm import tqdm
-from tqdm import tqdm
-from autolabel.dataset import SceneDataset, LenDataset
-from autolabel.trainer import SimpleTrainer
-from autolabel.constants import COLORS
+from autolabel.dataset import SceneDataset
 from autolabel import model_utils
-from autolabel import visualization
 
 MAX_WIDTH = 640
 
@@ -34,6 +27,13 @@ def read_args():
     parser = model_utils.model_flag_parser()
     parser.add_argument('scenes', nargs='+')
     parser.add_argument('--workspace', type=str)
+    parser.add_argument('--objects',
+                        type=int,
+                        default=None,
+                        help="""
+            If specified, find the specified number of largest connected components per class in the
+            produced semantic maps as a post-processing step, removing noise from the segmentation maps.
+            """)
     return parser.parse_args()
 
 
@@ -45,6 +45,33 @@ def lookup_frame_size(scene):
         width *= scale
         height *= scale
     return (int(np.round(width)), int(np.round(height)))
+
+
+def find_largest_components(p_semantic, class_id, object_count):
+    p_semantic = p_semantic.copy()
+    p_semantic[p_semantic != class_id] = 0
+    labels = measure.label(p_semantic)
+    counts = np.bincount(labels.flat)[1:]
+    largest = []
+    sorted_counts = np.argsort(counts)[::-1]
+    for i in range(object_count):
+        nth_largest_label = sorted_counts[i] + 1
+        largest.append(labels == nth_largest_label)
+    return largest
+
+
+def post_process(flags, p_semantic):
+    out = np.zeros_like(p_semantic)
+    class_ids = np.unique(p_semantic)
+    for class_id in class_ids:
+        if class_id == 0:
+            # Skip background class.
+            continue
+        components = find_largest_components(p_semantic, class_id,
+                                             flags.objects)
+        for component in components:
+            out[component] = class_id
+    return out
 
 
 def render_frame(model, batch):
@@ -79,7 +106,7 @@ def export_labels(flags, scene):
     dataset = SceneDataset('train',
                            scene,
                            size=frame_size,
-                           batch_size=8096,
+                           batch_size=16384,
                            features=model_params.features,
                            load_semantic=False)
 
@@ -98,6 +125,10 @@ def export_labels(flags, scene):
                                              dataset.scene.rgb_paths()):
                 batch = dataset._get_test(frame_index)
                 frame = render_frame(model, batch)
+
+                if flags.objects is not None:
+                    frame = post_process(flags, frame)
+
                 frame_name = os.path.splitext(os.path.basename(rgb_path))[0]
                 frame_path = os.path.join(output_path, f"{frame_name}.png")
                 cv2.imwrite(frame_path, frame)
