@@ -1,3 +1,17 @@
+"""
+Runs a user-in-the-loop simulation experiment. Requires dense ground truth semantic segmentation maps
+to be available.
+
+At each iteration, a frame is selected and inferred using the current model weights. A few incorrectly inferred pixels
+are selected and their corresponding ground truth labels are added to the dataset. The model is then fitted for some
+iterations before repeating the process.
+
+Between iterations, the accuracy is logged into a csv file scene/nerf/<model-hash>/user_simulation.csv
+or <workspace>/<scene_name>/<model-hash>/user_simulation.csv if a workspace is specified.
+
+Usage:
+    python scripts/simulate_user.py <scene>
+"""
 import os
 import math
 import argparse

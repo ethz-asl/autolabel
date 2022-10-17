@@ -1,3 +1,10 @@
+"""
+Converts rendered replica scenes from https://github.com/Harry-Zhi/semantic_nerf
+to the autolabel scene format.
+
+usage:
+    python scripts/convert_replica.py <replica sequence> --out <output-directory>
+"""
 import argparse
 import os
 import json
