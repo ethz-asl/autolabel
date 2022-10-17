@@ -24,7 +24,7 @@ conda install ffmpeg
 Install into your desired python environment with the following commands:
 ```
 pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-git clone --recursive https://github.com/francescomilano172/Hierarchical-Localization
+git clone --recursive git@github.com:cvg/Hierarchical-Localization.git
 pushd Hierarchical-Localization/
 git checkout feature/arbitrary_camera_model
 python -m pip install -e .
