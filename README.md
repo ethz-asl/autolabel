@@ -64,8 +64,12 @@ python scripts/gui.py bench --features dino
 
 Once you have annotated a scene, you can train some more on the annotations and render a video of the annotations:
 ```
-# Train some more on given annotations
+# Train some more on the given annotations
 python scripts/train.py bench --features dino
+
+# Export labels for learning on some downstream task.
+# Labels are saved at bench/output/semantic.
+python scripts/export.py bench
 
 # Render a video of annotations and features
 python scripts/render.py bench --model-dir bench/nerf/g15_hg+freq_dino_rgb1.0_d0.1_s1.0_f0.5_do0.1/ --out bench.mp4
