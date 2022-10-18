@@ -3,8 +3,6 @@ import json
 import numpy as np
 import os
 
-from torch_ngp.nerf.network_ff import NeRFNetwork
-
 
 class Camera:
 
@@ -53,7 +51,9 @@ class Scene:
         self._read_poses()
         intrinsics_path = os.path.join(scene_path, 'intrinsics.txt')
         image_size = self._peak_image_size()
-        self.camera = Camera.from_path(intrinsics_path, image_size)
+        if os.path.exists(intrinsics_path):
+            self.camera = Camera.from_path(intrinsics_path, image_size)
+        self._n_classes = None
 
     def _peak_image_size(self):
         if os.path.exists(self.raw_rgb_path):
@@ -96,6 +96,9 @@ class Scene:
 
     def depth_paths(self):
         return self._get_paths(self.depth_path)
+
+    def semantic_paths(self):
+        return self._get_paths(os.path.join(self.path, 'semantic'))
 
     def raw_rgb_paths(self):
         return self._get_paths(self.raw_rgb_path)
@@ -144,6 +147,17 @@ class Scene:
         image = cv2.imread(depth_paths[0], -1)
         return (image.shape[1], image.shape[0])
 
+    @property
+    def n_classes(self):
+        if self._n_classes is None:
+            metadata_path = os.path.join(self.path, 'metadata.json')
+            if not os.path.exists(metadata_path):
+                return None
+            with open(metadata_path) as f:
+                data = json.load(f)
+            self._n_classes = data['n_classes']
+        return self._n_classes
+
 
 def transform_points(T, points):
     R = T[:3, :3]
@@ -162,17 +176,3 @@ def _read_gt_mask(path, size):
         #TODO: handle multiple classes.
         image = cv2.fillPoly(image, polygon[None], 1)
     return image
-
-
-def create_model(dataset):
-    extents = dataset.max_bounds - dataset.min_bounds
-    bound = (extents - (dataset.min_bounds + dataset.max_bounds) * 0.5).max()
-    return NeRFNetwork(num_layers=2,
-                       num_layers_color=2,
-                       hidden_dim_color=64,
-                       hidden_dim=64,
-                       geo_feat_dim=15,
-                       encoding="hashgrid",
-                       bound=float(bound),
-                       cuda_ray=False,
-                       density_scale=1)

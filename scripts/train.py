@@ -9,23 +9,28 @@ import threading
 import cv2
 import numpy as np
 import torch
+import pickle
 from torch import optim
 from autolabel.dataset import SceneDataset, LenDataset
 from autolabel.trainer import SimpleTrainer
-from autolabel.evaluation import Evaluator
 from autolabel import model_utils
 
 
 def read_args():
-    parser = argparse.ArgumentParser()
+    parser = model_utils.model_flag_parser()
     parser.add_argument('scene')
-    parser.add_argument('--factor-train', type=float, default=2.0)
+    parser.add_argument('--factor-train', type=float, default=4.0)
     parser.add_argument('--factor-test', type=float, default=4.0)
-    parser.add_argument('--batch-size', '-b', type=int, default=4096)
-    parser.add_argument('--lr', type=float, default=1e-2)
+    parser.add_argument('--batch-size', '-b', type=int, default=2048)
     parser.add_argument('--iters', type=int, default=10000)
     parser.add_argument('--workers', '-w', type=int, default=1)
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--eval', action='store_true')
+    parser.add_argument(
+        '--workspace',
+        type=str,
+        default=None,
+        help="Save results in this directory instead of the scene directory.")
     return parser.parse_args()
 
 
@@ -35,11 +40,20 @@ def main():
     dataset = SceneDataset('train',
                            flags.scene,
                            factor=flags.factor_train,
-                           batch_size=flags.batch_size)
+                           batch_size=flags.batch_size,
+                           features=flags.features)
 
-    model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds)
+    n_classes = dataset.n_classes if dataset.n_classes is not None else 2
+    model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
+                                     n_classes, flags)
 
-    opt = Namespace(rand_pose=-1, color_space='srgb')
+    opt = Namespace(rand_pose=-1,
+                    color_space='srgb',
+                    feature_loss=flags.features is not None,
+                    rgb_weight=flags.rgb_weight,
+                    depth_weight=flags.depth_weight,
+                    semantic_weight=flags.semantic_weight,
+                    feature_weight=flags.feature_weight)
 
     optimizer = lambda model: torch.optim.Adam([
         {
@@ -47,13 +61,9 @@ def main():
             'params': list(model.encoder.parameters())
         },
         {
-            'name':
-                'net',
-            'params':
-                list(model.sigma_net.parameters()) + list(model.color_net.
-                                                          parameters()),
-            'weight_decay':
-                1e-6
+            'name': 'net',
+            'params': model.network_parameters(),
+            'weight_decay': 1e-6
         },
     ],
                                                lr=flags.lr,
@@ -66,20 +76,20 @@ def main():
     train_dataloader._data = dataset
 
     criterion = torch.nn.MSELoss(reduction='none')
-    min_lr = 1e-7
     gamma = 0.5
-    steps = math.log(1e-6 / flags.lr, gamma)
+    steps = math.log(1e-4 / flags.lr, gamma)
     step_size = max(flags.iters // steps // 1000, 1)
     scheduler = lambda optimizer: optim.lr_scheduler.StepLR(
         optimizer, gamma=gamma, step_size=step_size)
 
     epochs = int(np.ceil(flags.iters / 1000))
-    workspace = os.path.join(flags.scene, 'nerf')
+    model_dir = model_utils.model_dir(flags.scene, flags)
+    model_utils.write_params(model_dir, flags)
     trainer = SimpleTrainer('ngp',
                             opt,
                             model,
                             device='cuda:0',
-                            workspace=workspace,
+                            workspace=model_dir,
                             optimizer=optimizer,
                             criterion=criterion,
                             fp16=True,
@@ -89,33 +99,18 @@ def main():
                             metrics=[],
                             use_checkpoint='latest')
     trainer.train(train_dataloader, epochs)
+
+    testset = SceneDataset('test',
+                           flags.scene,
+                           factor=flags.factor_test,
+                           batch_size=flags.batch_size * 2)
     trainer.save_checkpoint()
-
-    test_dataset = SceneDataset('test',
-                                flags.scene,
-                                factor=flags.factor_test,
-                                batch_size=flags.batch_size)
-    test_dataloader = torch.utils.data.DataLoader(LenDataset(
-        test_dataset, test_dataset.poses.shape[0]),
-                                                  batch_size=None,
-                                                  num_workers=flags.workers)
-    test_dataloader._data = test_dataset
-    trainer.evaluate(test_dataloader)
-
-    classes = ['Background'
-              ] + [f"Class {i}" for i in dataset.index_sampler.classes]
-    evaluator = Evaluator(model, classes)
-    ious = evaluator.eval(test_dataset, visualize=flags.vis)
-
-    from rich.table import Table
-    from rich.console import Console
-    table = Table()
-    table.add_column('Class')
-    table.add_column('mIoU')
-    for class_index, miou in ious.items():
-        table.add_row(str(class_index), f"{miou:.3f}")
-    console = Console()
-    console.print(table)
+    if flags.eval:
+        test_dataloader = torch.utils.data.DataLoader(LenDataset(
+            testset, testset.rotations.shape[0]),
+                                                      batch_size=None,
+                                                      num_workers=0)
+        trainer.evaluate(test_dataloader)
 
 
 if __name__ == "__main__":

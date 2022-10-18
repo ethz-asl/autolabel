@@ -2,28 +2,32 @@ import argparse
 import os
 import random
 import numpy as np
+from autolabel import visualization
 from PIL import Image
 from PIL.ImageQt import fromqimage, ImageQt
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
-from PyQt5 import QtWidgets, QtCore, QtGui, Qt
+from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
+from PyQt6 import QtWidgets, QtCore, QtGui
 from torch import multiprocessing
 from torch.multiprocessing import Process
 import signal
 from autolabel.utils import Scene
+from autolabel import model_utils
 from autolabel.backend import TrainingLoop
-from autolabel.constants import COLORS
 from autolabel.ui.canvas import Canvas, ALPHA
 from matplotlib import cm
 
-NUM_KEYS = [QtCore.Qt.Key_0, QtCore.Qt.Key_1]
+NUM_KEYS = [QtCore.Qt.Key.Key_0, QtCore.Qt.Key.Key_1]
 INFERENCE_UPDATE_INTERVAL = 5000
 
 
 def read_args():
-    parser = argparse.ArgumentParser()
+    parser = model_utils.model_flag_parser()
+    parser.set_defaults(lr=1e-4)
     parser.add_argument('scene')
     parser.add_argument('--batch-size', type=int, default=4096)
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--dry',
+                        action='store_true',
+                        help="Runs without the NeRF backend.")
     return parser.parse_args()
 
 
@@ -51,18 +55,20 @@ class MessageBus:
         self.connection.send(('checkpoint', None))
 
 
-class ImagesView(QtWidgets.QGridLayout):
+class ImagesView(QtWidgets.QHBoxLayout):
 
     def __init__(self, canvas, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        image_size = (int(canvas.canvas_width / 2),
-                      int(canvas.canvas_height / 2))
-        size_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                            QtWidgets.QSizePolicy.Expanding)
+        image_size = (480, 320)
+        self.image_width = image_size[0]
+        size_policy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding)
         size_policy.setHeightForWidth(True)
         size_policy.setWidthForHeight(True)
-        small_policy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                             QtWidgets.QSizePolicy.Expanding)
+        small_policy = QtWidgets.QSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding)
         small_policy.setWidthForHeight(True)
         small_policy.setHeightForWidth(True)
 
@@ -70,40 +76,59 @@ class ImagesView(QtWidgets.QGridLayout):
         self.canvas.setSizePolicy(size_policy)
         self.rgb_view = QtWidgets.QLabel()
         self.depth_view = QtWidgets.QLabel()
+        self.feature_view = QtWidgets.QLabel()
         self.rgb_view.setScaledContents(True)
         self.depth_view.setScaledContents(True)
+        self.feature_view.setScaledContents(True)
         self.rgb_view.setSizePolicy(small_policy)
         self.depth_view.setSizePolicy(small_policy)
-        self.depth = QtGui.QPixmap(image_size[0], image_size[1])
-        self.color = QtGui.QPixmap(image_size[0], image_size[1])
-        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
-        self.color.fill(QtGui.QColor(0, 0, 0, 255))
-        self.depth_view.setPixmap(self.depth)
-        self.rgb_view.setPixmap(self.color)
+        self.feature_view.setSizePolicy(small_policy)
 
-        self.addWidget(canvas, 0, 0, 2, 1)
-        self.addWidget(self.rgb_view, 0, 1)
-        self.addWidget(self.depth_view, 1, 1)
+        self.color = QtGui.QPixmap(image_size[0], image_size[1])
+        self.depth = QtGui.QPixmap(image_size[0], image_size[1])
+        self.features = QtGui.QPixmap(image_size[0], image_size[1])
+        self.color.fill(QtGui.QColor(0, 0, 0, 255))
+        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
+        self.features.fill(QtGui.QColor(0, 0, 0, 255))
+        self.rgb_view.setPixmap(self.color)
+        self.depth_view.setPixmap(self.depth)
+        self.feature_view.setPixmap(self.features)
+
+        self.images_layout = QtWidgets.QVBoxLayout()
+        self.images_layout.addWidget(self.rgb_view)
+        self.images_layout.addWidget(self.depth_view)
+        self.images_layout.addWidget(self.feature_view)
+        self.addWidget(canvas)
+        self.addLayout(self.images_layout)
 
     def set_color(self, nparray):
-        qimage = ImageQt(Image.fromarray((nparray * 255).astype(np.uint8)))
+        qimage = ImageQt(
+            Image.fromarray((nparray * 255).astype(np.uint8)).reduce(2))
         self.color = QtGui.QPixmap.fromImage(qimage)
+        self.rgb_view.setPixmap(self.color)
+        self.rgb_view.repaint()
 
     def set_depth(self, nparray):
-        normalized_depth = 1.0 - np.clip(nparray, 0.0, 10.0) / 10.0
-        qimage = ImageQt(
-            Image.fromarray(
-                (cm.inferno(normalized_depth) * 255).astype(np.uint8)))
+        image = visualization.visualize_depth(nparray)
+        qimage = ImageQt(Image.fromarray(image))
         self.depth = QtGui.QPixmap.fromImage(qimage)
+        self.depth_view.setPixmap(self.depth)
+        self.depth_view.repaint()
+
+    def set_features(self, nparray):
+        image = Image.fromarray((nparray * 255).astype(np.uint8)).reduce(2)
+        qimage = ImageQt(image)
+        self.features = QtGui.QPixmap.fromImage(qimage)
+        self.feature_view.setPixmap(self.features)
+        self.feature_view.repaint()
 
     def reset(self):
         self.color.fill(QtGui.QColor(0, 0, 0, 255))
-        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
-        self.update_images()
-
-    def update_images(self):
         self.rgb_view.setPixmap(self.color)
+        self.depth.fill(QtGui.QColor(0, 0, 0, 255))
         self.depth_view.setPixmap(self.depth)
+        self.features.fill(QtGui.QColor(0, 0, 0, 255))
+        self.feature_view.setPixmap(self.features)
 
 
 class SceneViewer(QWidget):
@@ -116,11 +141,11 @@ class SceneViewer(QWidget):
         self.rgb_paths = self.scene.rgb_paths()
         self._image_cache = {}
         self._drawings = {}
-        self.setWindowTitle("Scene Viewer")
+        self.setWindowTitle("Autolabel")
 
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.slider.setMinimum(0)
-        self.slider.setMaximum(len(self.scene) - 1)
+        self.slider.setMaximum(len(self.scene.rgb_paths()) - 1)
         self.slider.valueChanged.connect(self._slider_value_change)
 
         size = self.scene.camera.size
@@ -144,7 +169,8 @@ class SceneViewer(QWidget):
         self.message_bus = MessageBus(self.connection)
         self.process = Process(target=training_loop,
                                args=(flags, child_connection))
-        self.process.start()
+        if not self.flags.dry:
+            self.process.start()
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self._request_image)
@@ -176,9 +202,10 @@ class SceneViewer(QWidget):
         if payload['image_index'] != self.current_image_index:
             return
         self.canvas.set_inferred(payload['semantic'].numpy())
-        self.images_view.set_depth(payload['depth'].numpy())
         self.images_view.set_color(payload['rgb'].numpy())
-        self.images_view.update_images()
+        self.images_view.set_depth(payload['depth'].numpy())
+        if payload['features'] is not None:
+            self.images_view.set_features(payload['features'])
 
     def _canvas_callback(self):
         # Called when the mouse button is lifted on the canvas.
@@ -199,9 +226,10 @@ class SceneViewer(QWidget):
 
         drawing = self._drawings.get(self.current_image, None)
         if drawing is None:
-            drawing = QtGui.QPixmap(self.canvas.canvas_width,
-                                    self.canvas.canvas_height)
-            drawing.fill(QtGui.QColor(0, 0, 0, 0))
+            drawing = QtGui.QImage(self.canvas.canvas_width,
+                                   self.canvas.canvas_height,
+                                   QtGui.QImage.Format.Format_RGB888)
+            drawing.fill(0)
             self._drawings[self.current_image] = drawing
         image = self._image_cache[self.current_image]
         self.canvas.set_image(image, drawing)
@@ -212,13 +240,13 @@ class SceneViewer(QWidget):
     def keyPressEvent(self, event):
         key = event.key()
         modifiers = QtWidgets.QApplication.keyboardModifiers()
-        if key == QtCore.Qt.Key_Escape or key == QtCore.Qt.Key_Q:
+        if key == QtCore.Qt.Key.Key_Escape or key == QtCore.Qt.Key.Key_Q:
             self.shutdown()
         elif key in NUM_KEYS:
             self.set_class(NUM_KEYS.index(key))
-        elif key == QtCore.Qt.Key_S and modifiers == QtCore.Qt.ControlModifier:
+        elif key == QtCore.Qt.Key.Key_S and modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
             self.save()
-        elif key == QtCore.Qt.Key_C:
+        elif key == QtCore.Qt.Key.Key_C:
             self.clear_image()
 
     def save(self):
@@ -230,17 +258,12 @@ class SceneViewer(QWidget):
         semantic_dir = os.path.join(self.scene.path, 'semantic')
         os.makedirs(semantic_dir, exist_ok=True)
         drawing = self._drawings[image_name]
-        array = np.asarray(fromqimage(drawing.toImage()))[:, :, :3]
+        array = np.asarray(fromqimage(drawing))[:, :, 0]
         if array.max() == 0:
             # Canvas is empty. Skip.
             return
-        out_map = np.zeros(array.shape[:2], dtype=np.uint8)
-        for i, color in enumerate(COLORS):
-            where_color = np.linalg.norm(array - color, 1, axis=-1) < 3
-            # Store index + 1 as 0 is the null class.
-            out_map[where_color] = i + 1
         path = os.path.join(semantic_dir, f"{image_name}.png")
-        Image.fromarray(out_map).save(path)
+        Image.fromarray(array).save(path)
 
     def load(self):
         semantic_dir = os.path.join(self.scene.path, 'semantic')
@@ -250,18 +273,15 @@ class SceneViewer(QWidget):
         for image in images:
             image_name = image.split('.')[0]
             image_path = os.path.join(semantic_dir, image)
-            array = np.array(Image.open(image_path))
-            colors = np.zeros((*array.shape, 4), dtype=np.uint8)
-            where_non_null = array > 0
-            colors[where_non_null, 3] = ALPHA
-            colors[where_non_null, :3] = COLORS[array[where_non_null] - 1]
-            qimage = ImageQt(Image.fromarray(colors))
-            self._drawings[image_name] = QtGui.QPixmap.fromImage(qimage)
+            array = np.array(Image.open(image_path)).astype(np.uint8)
+            array = np.repeat(array[:, :, None], 3, axis=2)
+            self._drawings[image_name] = ImageQt(Image.fromarray(array))
 
     def clear_image(self):
-        drawing = QtGui.QPixmap(self.canvas.canvas_width,
-                                self.canvas.canvas_height)
-        drawing.fill(QtGui.QColor(0, 0, 0, 0))
+        drawing = QtGui.QImage(self.canvas.canvas_width,
+                               self.canvas.canvas_height,
+                               QtGui.QImage.Format.Format_Grayscale8)
+        drawing.fill(0)
         self._drawings[self.current_image] = drawing
         self._set_image(self.current_image_index)
         image = self._image_cache[self.current_image]
@@ -278,8 +298,9 @@ class SceneViewer(QWidget):
         self._close()
 
     def _close(self):
-        self.process.terminate()
-        self.process.join()
+        if not self.flags.dry:
+            self.process.terminate()
+            self.process.join()
 
     def shutdown(self):
         self._close()

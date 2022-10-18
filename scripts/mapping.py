@@ -285,7 +285,6 @@ class PoseSaver:
         # Then get the center.
         min_bounds = np.zeros(3)
         max_bounds = np.zeros(3)
-        pc = o3d.geometry.PointCloud()
         depth_frame = o3d.io.read_image(self.scene.depth_paths()[0])
         depth_size = np.asarray(depth_frame).shape[::-1]
         K = self.scene.camera.scale(depth_size).camera_matrix
@@ -296,7 +295,12 @@ class PoseSaver:
         pc = o3d.geometry.PointCloud()
         depth_frames = dict([(os.path.basename(p).split('.')[0], p)
                              for p in self.scene.depth_paths()])
-        for key, T_WC in poses.items():
+        items = [item for item in poses.items()]
+        stride = max(len(self.scene.depth_paths()) // 100, 1)
+        for key, T_WC in items[::stride]:
+            if key not in depth_frames:
+                print("WARNING: Can't find depth image {key}.png")
+                continue
             depth = o3d.io.read_image(f"{depth_frames[key]}")
 
             pc_C = o3d.geometry.PointCloud.create_from_depth_image(
@@ -359,6 +363,10 @@ class Pipeline:
     def run(self):
         hloc = HLoc(self.tmp_dir, self.scene, self.flags)
         hloc.run()
+
+        # Camera intrinsics might have changed so reload the scene.
+        self.scene = Scene(self.scene.path)
+
         scale_estimation = ScaleEstimation(self.scene, self.tmp_dir)
         scaled_poses = scale_estimation.run()
         pose_saver = PoseSaver(self.scene, scaled_poses)

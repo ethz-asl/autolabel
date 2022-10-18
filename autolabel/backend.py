@@ -1,38 +1,44 @@
 import os
 import torch
 import numpy as np
+import h5py
+import pickle
 from argparse import Namespace
 from PIL import Image
 from torch import optim
 from autolabel.trainer import SimpleTrainer, InteractiveTrainer
 from autolabel.dataset import SceneDataset
-from autolabel.model_utils import create_model
+from autolabel import model_utils
 
 
 class TrainingLoop:
 
     def __init__(self, scene, flags, connection):
+        self.scene_path = scene
         self.flags = flags
-        self.workspace = os.path.join(scene, 'nerf')
+        model_hash = model_utils.model_hash(flags)
+        self.workspace = os.path.join(scene, 'nerf', model_hash)
+        self._load_pca()
         self.train_dataset = SceneDataset('train',
                                           scene,
                                           factor=4.0,
-                                          batch_size=flags.batch_size)
-        self.model = create_model(self.train_dataset.min_bounds,
-                                  self.train_dataset.max_bounds)
+                                          batch_size=flags.batch_size,
+                                          features=self.flags.features)
+
+        n_classes = self.train_dataset.n_classes if self.train_dataset.n_classes is not None else 2
+        self.model = model_utils.create_model(self.train_dataset.min_bounds,
+                                              self.train_dataset.max_bounds,
+                                              n_classes,
+                                              flags=flags)
         self.optimizer = lambda model: torch.optim.Adam([
             {
                 'name': 'encoding',
                 'params': list(model.encoder.parameters())
             },
             {
-                'name':
-                    'net',
-                'params':
-                    list(model.sigma_net.parameters()) + list(model.color_net.
-                                                              parameters()),
-                'weight_decay':
-                    1e-6
+                'name': 'net',
+                'params': model.network_parameters(),
+                'weight_decay': 1e-6
             },
         ],
                                                         lr=flags.lr,
@@ -49,7 +55,13 @@ class TrainingLoop:
         scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(optimizer,
                                                                     factor=1.0)
 
-        opt = Namespace(rand_pose=-1, color_space='srgb')
+        opt = Namespace(rand_pose=-1,
+                        color_space='srgb',
+                        feature_loss=self.flags.features is not None,
+                        rgb_weight=self.flags.rgb_weight,
+                        depth_weight=self.flags.depth_weight,
+                        semantic_weight=self.flags.semantic_weight,
+                        feature_weight=self.flags.feature_weight)
         self.trainer = InteractiveTrainer('ngp',
                                           opt,
                                           self.model,
@@ -62,6 +74,18 @@ class TrainingLoop:
                                           lr_scheduler=scheduler,
                                           metrics=[],
                                           use_checkpoint='latest')
+
+    def _load_pca(self):
+        feature_path = os.path.join(self.scene_path, 'features.hdf')
+        if self.flags.features is None or not os.path.exists(feature_path):
+            self.pca = None
+            return
+        with h5py.File(feature_path, 'r') as f:
+            features = f[f'features/{self.flags.features}']
+            blob = features.attrs['pca'].tobytes()
+            self.pca = pickle.loads(blob)
+            self.feature_min = features.attrs['min']
+            self.feature_range = features.attrs['range']
 
     def _create_dataloader(self, dataset):
         loader = torch.utils.data.DataLoader(dataset,
@@ -102,25 +126,37 @@ class TrainingLoop:
         with torch.no_grad():
             data = self._to_tensor(self.train_dataset._get_test(image_index))
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                p_rgb, p_depth, p_semantic = self.trainer.test_step(data)
+                p_rgb, p_depth, p_semantic, p_features = self.trainer.test_step(
+                    data)
+
         self.model.train()
         semantic = p_semantic[0].argmax(dim=-1).detach().cpu()
+
+        if self.pca is not None:
+            features = p_features.detach().cpu().numpy()
+            H, W, C = features.shape
+            features = self.pca.transform(features.reshape(H * W, C))
+            features = np.clip(
+                (features - self.feature_min) / self.feature_range, 0., 1.)
+            features = features.reshape(H, W, 3)
+        else:
+            features = None
+
         self.log(f"Sending {image_index}")
         self.connection.send(("image", {
             'image_index': image_index,
             'rgb': p_rgb[0].detach().cpu(),
             'depth': p_depth[0].detach().cpu(),
-            'semantic': semantic
+            'semantic': semantic,
+            'features': features
         }))
 
     def _update_image(self, image_index):
         self.train_dataset.semantic_map_updated(image_index)
 
     def _save_checkpoint(self):
-        checkpoint_path = os.path.join(self.train_dataset.scene.path, 'nerf',
-                                       'checkpoints')
-        name = self.trainer.name
-        checkpoint_path = os.path.join(checkpoint_path, f"{name}.pth")
+        checkpoint_path = os.path.join(self.workspace, 'checkpoints')
+        checkpoint_path = os.path.join(checkpoint_path, f"best.pth")
         state = {}
         state['model'] = self.model.state_dict()
         state['optimizer'] = self.trainer.optimizer.state_dict()
