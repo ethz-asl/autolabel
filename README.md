@@ -134,11 +134,14 @@ The computed outputs are:
 
 If you have a LiDAR enabled iOS device, you can use the [Stray Scanner](https://apps.apple.com/us/app/stray-scanner/id1557051662) app to record data. The script at `scripts/convert_scanner.py` will allow you to convert a scene recorded using the app to the above format. You can then run the `mapping.py` script to run structure from motion and compute the other outputs.
 
-### [Debugging] Verifying the results in `instant-ngp`
-As a quick way to assess how well the camera poses were computed, you may fit a scene reconstruction using [`instant-ngp`](https://github.com/NVlabs/instant-ngp), which we can consider as providing an upper bound on the achievable quality of the reconstruction. To do so, assuming you have already installed `instant-ngp`, you can:
-1. Convert the dataset generated through `autolabel` to a format readable by `instant-ngp`, using the script [`scripts/convert_to_instant_ngp.py`](./scripts/convert_to_instant_ngp.py), e.g.:
+### [Debugging] Running scenes in `instant-ngp`
+
+For debugging, visualization and for comparing results, the project includes a script to convert scenes for running in [`instant-ngp`](https://github.com/NVlabs/instant-ngp).
+
+To do so, assuming you have `instant-ngp` installed, you can:
+1. Convert the dataset generated through `autolabel` to a format readable by `instant-ngp` using the script [`scripts/convert_to_instant_ngp.py`](./scripts/convert_to_instant_ngp.py). Example usage:
     ```bash
-    python scripts/convert_to_instant_ngp ---dataset_folder <scene>
+    python scripts/convert_to_instant_ngp.py ---dataset_folder <scene>
     ```
 2. Run `instant-ngp` on the converted dataset:
     ```bash
