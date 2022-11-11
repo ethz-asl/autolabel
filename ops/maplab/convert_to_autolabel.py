@@ -9,23 +9,31 @@ import yaml
 import open3d as o3d
 from scipy.spatial.transform import Rotation
 
+
 def read_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--bag', required=True, help="Path to bag file that was mapped.")
+    parser.add_argument('--bag',
+                        required=True,
+                        help="Path to bag file that was mapped.")
     parser.add_argument('--export',
-            default="/tmp/maps/csv_export.csv",
-            help="Path to maplab csv export.")
-    parser.add_argument('--out', required=True,
-            help="Where to write the resulting scene.")
-    parser.add_argument('--sensors', required=True,
-            help="Maplab sensor config.")
+                        default="/tmp/maps/csv_export.csv",
+                        help="Path to maplab csv export.")
+    parser.add_argument('--out',
+                        required=True,
+                        help="Where to write the resulting scene.")
+    parser.add_argument('--sensors',
+                        required=True,
+                        help="Maplab sensor config.")
     return parser.parse_args()
+
 
 def read_csv(filepath):
     array = np.loadtxt(filepath)
     return array[:, 0], array
 
+
 class Frame:
+
     def __init__(self, t_img):
         self.t_img = t_img
         self.t_imu = None
@@ -34,12 +42,15 @@ class Frame:
         self.image = None
         self.depth = None
 
+
 class BBoxComputer:
+
     def __init__(self, K, image_size):
         self.min_bounds = np.zeros(3)
         self.max_bounds = np.zeros(3)
-        self.K = o3d.camera.PinholeCameraIntrinsic(int(image_size[0]), int(image_size[1]),
-                K[0, 0], K[1, 1], K[0, 2], K[1, 2])
+        self.K = o3d.camera.PinholeCameraIntrinsic(int(image_size[0]),
+                                                   int(image_size[1]), K[0, 0],
+                                                   K[1, 1], K[0, 2], K[1, 2])
         self.pc = o3d.geometry.PointCloud()
 
     def add_frame(self, T_CW, depth):
@@ -48,15 +59,17 @@ class BBoxComputer:
             depth, depth_scale=1000.0, intrinsic=self.K)
         pc_C = np.asarray(pc_C.points)
         T_WC = np.linalg.inv(T_CW)
-        pc_W = (T_WC[:3, :3].__matmul__(pc_C[:, :, None]))[:, :, 0] + T_WC[:3, 3]
+        pc_W = (T_WC[:3, :3].__matmul__(pc_C[:, :, None]))[:, :, 0] + T_WC[:3,
+                                                                           3]
 
         self.min_bounds = np.minimum(self.min_bounds, pc_W.min(axis=0))
         self.max_bounds = np.maximum(self.max_bounds, pc_W.max(axis=0))
-        self.pc += o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pc_W)).uniform_down_sample(50)
+        self.pc += o3d.geometry.PointCloud(
+            o3d.utility.Vector3dVector(pc_W)).uniform_down_sample(50)
 
     def get_bounds(self):
         filtered, _ = self.pc.remove_statistical_outlier(nb_neighbors=20,
-                                                    std_ratio=2.0)
+                                                         std_ratio=2.0)
         bbox = filtered.get_oriented_bounding_box()
         T = np.eye(4)
         T[:3, :3] = bbox.R.T
@@ -69,6 +82,7 @@ class BBoxComputer:
         aabb[1, :] = o3d_aabb.get_max_bound() - center
         return T, aabb, filtered
 
+
 def to_pose(vertex):
     t = vertex[1:4]
     q = vertex[4:]
@@ -77,6 +91,7 @@ def to_pose(vertex):
     R_CW = Rotation.from_quat(q)
     T_WI[:3, :3] = R_CW.as_matrix()
     return np.linalg.inv(T_WI)
+
 
 def collect_frames(bag, timestamps, vertices, sensor_filepath):
     frames = []
@@ -97,7 +112,9 @@ def collect_frames(bag, timestamps, vertices, sensor_filepath):
         closest = np.abs(timestamps - msg.header.stamp.to_sec()).argmin()
         distance_to_closest = timestamps[closest] - msg.header.stamp.to_sec()
         if distance_to_closest > 0.05:
-            print("Frame at time {} is too far away from a measurement with distance of {} seconds.".format(msg.header.stamp.to_sec(), distance_to_closest))
+            print(
+                "Frame at time {} is too far away from a measurement with distance of {} seconds."
+                .format(msg.header.stamp.to_sec(), distance_to_closest))
         else:
             frame = Frame(msg.header.stamp.to_sec())
             frame.image = msg
@@ -118,14 +135,17 @@ def collect_frames(bag, timestamps, vertices, sensor_filepath):
 
     without_depth = [f for f in frames if f.depth is None]
     if len(without_depth) > 0:
-        print("Skipping {} frames without depth frame.".format(len(without_depth)))
+        print("Skipping {} frames without depth frame.".format(
+            len(without_depth)))
 
     frames = [f for f in frames if f.depth is not None]
     return frames
 
+
 def get_intrinsics(bag):
     for topic, msg, t in bag.read_messages(topics='/rgb/camera_info'):
         return msg
+
 
 def write_scene(out_dir, frames, intrinsics):
     rgb_out = os.path.join(out_dir, 'rgb')
@@ -145,10 +165,14 @@ def write_scene(out_dir, frames, intrinsics):
 
     bbox_computer = None
     for i, frame in enumerate(frames):
-        rgb = np.frombuffer(frame.image.data, dtype=np.uint8).reshape(frame.image.height, frame.image.width, -1)
+        rgb = np.frombuffer(frame.image.data,
+                            dtype=np.uint8).reshape(frame.image.height,
+                                                    frame.image.width, -1)
         if cv2.waitKey(1) == ord('q'):
             break
-        depth = np.frombuffer(frame.depth.data, dtype=np.uint16).reshape(frame.depth.height, frame.depth.width)
+        depth = np.frombuffer(frame.depth.data,
+                              dtype=np.uint16).reshape(frame.depth.height,
+                                                       frame.depth.width)
         if bbox_computer is None:
             bbox_computer = BBoxComputer(K, (depth.shape[1], depth.shape[0]))
         if i % 5 == 0:
@@ -172,7 +196,6 @@ def write_scene(out_dir, frames, intrinsics):
         # Apply transform to align with computed bounding box.
         T_WC = T.__matmul__(np.linalg.inv(T_CW))
         np.savetxt(pose_path, np.linalg.inv(T_WC))
-
 
     bbox_path = os.path.join(out_dir, 'bbox.txt')
     with open(bbox_path, 'wt') as f:
@@ -198,4 +221,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
