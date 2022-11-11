@@ -14,6 +14,7 @@ ENV NVIDIA_DRIVER_CAPABILITIES compute,utility,graphics,video,display
 
 WORKDIR /root
 
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 ADD setup-ubuntu.sh /root
 
 RUN ./setup-ubuntu.sh ${ARCH}
@@ -34,13 +35,16 @@ COPY maplab /home/maplab_user/ws/src/maplab
 
 RUN sudo chown -R maplab_user /home/maplab_user/ws/src && /home/maplab_user/install.sh
 
+RUN sudo apt-get install -y python3-pip python3.7 python3-pip && \
+  python3.7 -m pip install --upgrade pip && \
+  python3.7 -m pip install --no-input opencv-python gnupg pycryptodomex numpy scipy scikit-learn && \
+  python3.7 -m pip install --no-input open3d rospkg scikit-learn PyYaml && \
+  python3.7 -m pip install --no-input rosbag roslz4 --extra-index-url https://rospypi.github.io/simple/
+
 COPY map.sh /home/maplab_user/map.sh
+COPY run_rovioli.sh /home/maplab_user/run_rovioli.sh
 COPY maplab_console_script.yaml /home/maplab_user/maplab_console_script.yaml
-RUN sudo apt-get install -y python3.7 python3-pip python3.7-dev python3-yaml && \
-  python3.7 -m pip install cython numpy open3d rospkg gnupg pycryptodomex scikit-learn
 COPY convert_to_autolabel.py /home/maplab_user/convert_to_autolabel.py
 
 ENTRYPOINT ["bash", "/home/maplab_user/map.sh"]
-
-
 

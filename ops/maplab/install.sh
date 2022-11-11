@@ -2,6 +2,8 @@
 
 set -e
 
+export DEBIAN_FRONTEND=noninteractive
+
 CATKIN_WS=/home/maplab_user/ws # Change this if you want.
 SECONDS=0
 echo "

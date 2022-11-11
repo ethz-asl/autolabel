@@ -8,7 +8,6 @@ import cv2
 import yaml
 import open3d as o3d
 from scipy.spatial.transform import Rotation
-from cv_bridge import CvBridge
 
 def read_args():
     parser = argparse.ArgumentParser()
@@ -143,15 +142,13 @@ def write_scene(out_dir, frames, intrinsics):
     np.savetxt(intrinsics_file, K)
 
     frames = sorted(frames, key=lambda f: f.t_img)
-    bridge = CvBridge()
 
     bbox_computer = None
     for i, frame in enumerate(frames):
-        rgb = bridge.imgmsg_to_cv2(frame.image, desired_encoding="bgr8")
-        cv2.imshow("Image", rgb)
+        rgb = np.frombuffer(frame.image.data, dtype=np.uint8).reshape(frame.image.height, frame.image.width, -1)
         if cv2.waitKey(1) == ord('q'):
             break
-        depth = bridge.imgmsg_to_cv2(frame.depth, desired_encoding='passthrough')
+        depth = np.frombuffer(frame.depth.data, dtype=np.uint16).reshape(frame.depth.height, frame.depth.width)
         if bbox_computer is None:
             bbox_computer = BBoxComputer(K, (depth.shape[1], depth.shape[0]))
         if i % 5 == 0:

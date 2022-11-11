@@ -10,13 +10,17 @@ command="$1"
 if [ "$command" == "shell" ];
 then
 	sensor_file="$2"
-	map_folder="$3"
+	bag_file="$3"
+	out_scene="$4"
+
+	mkdir -p $out_scene
 
 	xhost +local:root;
 	docker run -it --runtime=nvidia --privileged -v /dev/bus/usb:/dev/bus/usb \
 		--entrypoint /bin/bash \
-		-v "$map_folder":/home/maplab_user/maps \
 		-v "$sensor_file":/home/maplab_user/sensors.yaml \
+		-v "$bag_file":/home/maplab_user/bag.bag \
+		-v "$out_scene":/home/maplab_user/out_scene \
 		-e QT_X11_NO_MITSHM=1 --network=host \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:rw \
 		maplab
