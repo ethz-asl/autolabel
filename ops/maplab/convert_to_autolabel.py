@@ -7,7 +7,7 @@ import csv
 import cv2
 import yaml
 import open3d as o3d
-from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Rotation, Slerp
 
 
 def read_args():
@@ -83,13 +83,21 @@ class BBoxComputer:
         return T, aabb, filtered
 
 
-def to_pose(vertex):
-    t = vertex[1:4]
-    q = vertex[4:]
+def interpolate_to_pose(previous, following, t_rgb):
+    t_prev = previous[0]  # 0.0
+    t_next = following[0] - t_prev
+    t_next /= t_next  # 1.0
+    t = (t_rgb - t_prev) / t_next
+    q_p = previous[4:]
+    q_n = following[4:]
+    t_p = previous[1:4]
+    t_n = following[1:4]
+    translation = (1.0 - t) * t_p + t * t_n
+    slerp = Slerp([0., 1.], Rotation.from_quat([q_p, q_n]))
+    R_WI = slerp(t)
     T_WI = np.eye(4)
     T_WI[:3, 3] = t
-    R_CW = Rotation.from_quat(q)
-    T_WI[:3, :3] = R_CW.as_matrix()
+    T_WI[:3, :3] = R_WI.as_matrix()
     return np.linalg.inv(T_WI)
 
 
@@ -110,16 +118,32 @@ def collect_frames(bag, timestamps, vertices, sensor_filepath):
     #TODO: Lookup the topic names from somehwere.
     for topic, msg, t in bag.read_messages(topics="/rgb/image_rect_color"):
         closest = np.abs(timestamps - msg.header.stamp.to_sec()).argmin()
-        distance_to_closest = timestamps[closest] - msg.header.stamp.to_sec()
+        t_rgb = msg.header.stamp.to_sec()
+        t_imu = timestamps[closest]
+        distance_to_closest = t_rgb - t_imu
         if distance_to_closest > 0.05:
             print(
                 "Frame at time {} is too far away from a measurement with distance of {} seconds."
                 .format(msg.header.stamp.to_sec(), distance_to_closest))
         else:
+            if distance_to_closest < 0.0 and closest == 0:
+                # Skip frame, if it was taken before imu poses are available.
+                continue
+            try:
+                if t_imu <= t_rgb:
+                    previous = vertices[closest]  # t_imu
+                    following = vertices[closest + 1]  # t_imu next
+                elif t_rgb < t_imu:
+                    previous = vertices[closest - 1]  # t_imu previous
+                    following = vertices[closest]  # t_imu
+                else:
+                    raise RuntimeError()
+            except IndexError:
+                continue
             frame = Frame(msg.header.stamp.to_sec())
             frame.image = msg
             frame.t_imu = timestamps[closest]
-            T_IW = to_pose(vertices[closest])
+            T_IW = interpolate_to_pose(previous, following, t_rgb)
             T_CW = T_CI.__matmul__(T_IW)
             frame.T_CW = T_CW
             frames.append(frame)
