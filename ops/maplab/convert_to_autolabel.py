@@ -29,6 +29,9 @@ def read_args():
 
 def read_csv(filepath):
     array = np.loadtxt(filepath)
+    timestamps = array[:, 0]
+    order = np.argsort(timestamps)
+    array = array[order]
     return array[:, 0], array
 
 
@@ -36,7 +39,6 @@ class Frame:
 
     def __init__(self, t_img):
         self.t_img = t_img
-        self.t_imu = None
         self.t_depth = None
         self.T_CW = None
         self.image = None
@@ -84,10 +86,10 @@ class BBoxComputer:
 
 
 def interpolate_to_pose(previous, following, t_rgb):
-    t_prev = previous[0]  # 0.0
-    t_next = following[0] - t_prev
-    t_next /= t_next  # 1.0
-    t = (t_rgb - t_prev) / t_next
+    t_prev = previous[0] # 0.0
+    assert following[0] > previous[0]
+    t = (t_rgb - t_prev) / (following[0] - t_prev)
+    assert 0.0 <= t <= 1.0
     q_p = previous[4:]
     q_n = following[4:]
     t_p = previous[1:4]
@@ -96,7 +98,7 @@ def interpolate_to_pose(previous, following, t_rgb):
     slerp = Slerp([0., 1.], Rotation.from_quat([q_p, q_n]))
     R_WI = slerp(t)
     T_WI = np.eye(4)
-    T_WI[:3, 3] = t
+    T_WI[:3, 3] = translation
     T_WI[:3, :3] = R_WI.as_matrix()
     return np.linalg.inv(T_WI)
 
@@ -107,7 +109,6 @@ def collect_frames(bag, timestamps, vertices, sensor_filepath):
 
     with open(sensor_filepath, 'rt') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
-
     for sensor in config['sensors']:
         if sensor.get('sensor_type') == 'NCAMERA':
             camera = sensor['cameras'][0]['T_B_C']
@@ -115,12 +116,13 @@ def collect_frames(bag, timestamps, vertices, sensor_filepath):
     T_IC = np.array(camera['data']).reshape(4, 4)
     T_CI = np.linalg.inv(T_IC)
 
+
     #TODO: Lookup the topic names from somehwere.
     for topic, msg, t in bag.read_messages(topics="/rgb/image_rect_color"):
         closest = np.abs(timestamps - msg.header.stamp.to_sec()).argmin()
         t_rgb = msg.header.stamp.to_sec()
         t_imu = timestamps[closest]
-        distance_to_closest = t_rgb - t_imu
+        distance_to_closest = np.abs(t_rgb - t_imu)
         if distance_to_closest > 0.05:
             print(
                 "Frame at time {} is too far away from a measurement with distance of {} seconds."
@@ -131,29 +133,35 @@ def collect_frames(bag, timestamps, vertices, sensor_filepath):
                 continue
             try:
                 if t_imu <= t_rgb:
-                    previous = vertices[closest]  # t_imu
-                    following = vertices[closest + 1]  # t_imu next
+                    previous = vertices[closest] # t_imu
+                    following = vertices[closest+1] # t_imu next
+                elif t_rgb < t_imu and closest == 0:
+                    # Skip if the frame is taken before the first pose
+                    continue
                 elif t_rgb < t_imu:
-                    previous = vertices[closest - 1]  # t_imu previous
-                    following = vertices[closest]  # t_imu
+                    previous = vertices[closest-1] # t_imu previous
+                    following = vertices[closest] # t_imu
                 else:
                     raise RuntimeError()
             except IndexError:
                 continue
-            frame = Frame(msg.header.stamp.to_sec())
+            frame = Frame(t_rgb)
             frame.image = msg
-            frame.t_imu = timestamps[closest]
             T_IW = interpolate_to_pose(previous, following, t_rgb)
-            T_CW = T_CI.__matmul__(T_IW)
-            frame.T_CW = T_CW
+            T_IW = T_CI @ T_IW
+            frame.T_CW = T_IW
             frames.append(frame)
 
     frame_times = np.array([t.t_img for t in frames])
     for topic, msg, t in bag.read_messages(topics="/depth_to_rgb/image_rect"):
-        closest_img = np.abs(frame_times - msg.header.stamp.to_sec()).argmin()
+        t_depth = msg.header.stamp.to_sec()
+        closest_img = np.abs(frame_times - t_depth).argmin()
         frame = frames[closest_img]
         if frame.depth is not None:
             print("Found two rgb images to match depth.")
+            if np.abs(frame.t_img - t_depth) > np.abs(frame.t_img - frame.t_depth):
+                # If the previously found depth was a better fit, keep it.
+                continue
         frame.depth = msg
         frame.t_depth = msg.header.stamp.to_sec()
 
@@ -194,6 +202,7 @@ def write_scene(out_dir, frames, intrinsics):
                                                     frame.image.width, -1)
         if cv2.waitKey(1) == ord('q'):
             break
+        assert frame.depth.encoding == '16UC1'
         depth = np.frombuffer(frame.depth.data,
                               dtype=np.uint16).reshape(frame.depth.height,
                                                        frame.depth.width)
