@@ -19,12 +19,11 @@ from autolabel import model_utils
 def read_args():
     parser = model_utils.model_flag_parser()
     parser.add_argument('scene')
-    parser.add_argument('--factor-train', type=float, default=4.0)
-    parser.add_argument('--factor-test', type=float, default=4.0)
-    parser.add_argument('--batch-size', '-b', type=int, default=2048)
+    parser.add_argument('--factor-train', type=float, default=2.0)
+    parser.add_argument('--factor-test', type=float, default=2.0)
+    parser.add_argument('--batch-size', '-b', type=int, default=4096)
     parser.add_argument('--iters', type=int, default=10000)
     parser.add_argument('--workers', '-w', type=int, default=1)
-    parser.add_argument('--vis', action='store_true')
     parser.add_argument('--eval', action='store_true')
     parser.add_argument(
         '--workspace',

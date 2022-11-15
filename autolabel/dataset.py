@@ -294,7 +294,9 @@ class BaseDataset(torch.utils.data.IterableDataset):
             images = np.stack([images[index] for index in indices])
         else:
             images = images[::10]
-        where_non_zero = np.any(images != 0.0, axis=3)
+        # Remove any pixels that also very dark across all images.
+        # There is likely something weird with the pipeline through which these came from.
+        where_non_zero = np.any(images > (10. / 255.), axis=3)
         where_non_zero = np.any(where_non_zero.reshape(where_non_zero.shape[0],
                                                        -1),
                                 axis=0)
@@ -356,12 +358,11 @@ class SceneDataset(BaseDataset):
             if self.lazy:
                 images.append(frame)
             else:
-                image = np.array(Image.open(frame),
-                                 dtype=np.float32)[..., :3] / 255.
+                image = np.array(Image.open(frame), dtype=np.float32)[..., :3]
                 image = cv2.resize(image,
                                    self.camera.size,
-                                   interpolation=cv2.INTER_AREA)
-                images.append(image)
+                                   interpolation=cv2.INTER_NEAREST)
+                images.append(image / 255.)
 
             semantic_path = os.path.join(self.scene.path, 'semantic',
                                          os.path.basename(depth_images[index]))
