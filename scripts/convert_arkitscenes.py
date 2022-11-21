@@ -24,17 +24,22 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+
 def read_args():
-    parser = argparse.ArgumentParser(description=description, formatter_class=RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(description=description,
+                                     formatter_class=RawTextHelpFormatter)
     parser.add_argument('arkit_scenes')
     parser.add_argument('--out')
     return parser.parse_args()
 
+
 def read_trajectory(path):
     return np.loadtxt(path)
 
+
 def extract_name(filename):
     return filename.replace('.png', '')
+
 
 def collect_images(dir_path):
     filenames = os.listdir(dir_path)
@@ -43,6 +48,7 @@ def collect_images(dir_path):
         name = extract_name(filename)
         out[name] = os.path.join(dir_path, filename)
     return out
+
 
 def read_intrinsics(dir_path):
     intrinsic_files = os.listdir(dir_path)
@@ -55,16 +61,19 @@ def read_intrinsics(dir_path):
     C[1, 2] = cy
     return C
 
+
 def to_ts(filename):
     _, ts = filename.split('_')
     seconds, ms = [int(v) for v in ts.split('.')]
     return seconds + ms * 1e-3
+
 
 def find_pose(trajectory, rgb_name):
     timestamp = to_ts(rgb_name)
     errors = np.abs(trajectory[:, 0] - timestamp)
     closest = errors.argmin()
     return trajectory[closest], errors[closest]
+
 
 def to_transform(pose):
     rotvec = pose[1:4]
@@ -75,7 +84,9 @@ def to_transform(pose):
     T_CW[:3, 3] = translation
     return T_CW
 
-def write_scene(flags, scene_name, trajectory, rgb_images, depth_images, confidence_images, intrinsics):
+
+def write_scene(flags, scene_name, trajectory, rgb_images, depth_images,
+                confidence_images, intrinsics):
     eps = 1.0 / 90.0
     rgb_out = os.path.join(flags.out, scene_name, 'rgb')
     depth_out = os.path.join(flags.out, scene_name, 'depth')
@@ -113,7 +124,8 @@ def write_scene(flags, scene_name, trajectory, rgb_images, depth_images, confide
         cv2.imwrite(depth_path, depth)
         cv2.imwrite(rgb_path, rgb)
         np.savetxt(pose_path, T_CW)
-    np.savetxt(os.path.join(flags.out, scene_name, 'intrinsics.txt'), intrinsics)
+    np.savetxt(os.path.join(flags.out, scene_name, 'intrinsics.txt'),
+               intrinsics)
 
 
 def main():
@@ -126,9 +138,12 @@ def main():
         confidence_dir = os.path.join(flags.arkit_scenes, scene, 'confidence')
         depth_dir = os.path.join(flags.arkit_scenes, scene, 'lowres_depth')
         rgb_dir = os.path.join(flags.arkit_scenes, scene, 'lowres_wide')
-        intrinsics_dir = os.path.join(flags.arkit_scenes, scene, 'lowres_wide_intrinsics')
+        intrinsics_dir = os.path.join(flags.arkit_scenes, scene,
+                                      'lowres_wide_intrinsics')
 
-        if not os.path.exists(traj_file) or not os.path.exists(confidence_dir) or not os.path.exists(rgb_dir) or not os.path.exists(intrinsics_dir):
+        if not os.path.exists(traj_file) or not os.path.exists(
+                confidence_dir) or not os.path.exists(
+                    rgb_dir) or not os.path.exists(intrinsics_dir):
             print(f"Missing files in {scene}")
             continue
 
@@ -139,7 +154,8 @@ def main():
         confidence_images = collect_images(confidence_dir)
         intrinsics = read_intrinsics(intrinsics_dir)
 
-        write_scene(flags, scene, trajectory, rgb_images, depth_images, confidence_images, intrinsics)
+        write_scene(flags, scene, trajectory, rgb_images, depth_images,
+                    confidence_images, intrinsics)
 
 
 if __name__ == "__main__":
