@@ -78,6 +78,7 @@ def to_pointcloud(color, depth, T_CW, camera_matrix, image_size):
 
 def main():
     flags = read_args()
+    print(f"Computing scene bounds for {flags.scene}")
 
     scene = Scene(flags.scene)
     image_size = scene.peak_image_size()

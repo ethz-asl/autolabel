@@ -135,7 +135,9 @@ The computed outputs are:
 - `intrinsics.txt` inferred camera intrinsic parameters
 - `bbox.txt` scene bounds
 
-### Recording data
+## Datasets
+
+### Capturing your own datasets
 
 If you have a LiDAR enabled iOS device, you can use the [Stray Scanner](https://apps.apple.com/us/app/stray-scanner/id1557051662) app to record data. The script at `scripts/convert_scanner.py` will allow you to convert a scene recorded using the app to the above format. You can then run the `mapping.py` script to run structure from motion and compute the other outputs.
 
@@ -143,11 +145,13 @@ If you have a LiDAR enabled iOS device, you can use the [Stray Scanner](https://
 
 We have written data conversion scripts for different publicly available datasets.
 
-Renders from the [Replica]() dataset published by [SemanticNeRF](https://github.com/Harry-Zhi/semantic_nerf/) can be converted using the `scripts/convert_replica.py` script.
+Renders from the [Replica](https://github.com/facebookresearch/Replica-Dataset) dataset published by [SemanticNeRF](https://github.com/Harry-Zhi/semantic_nerf/) can be converted using the `scripts/convert_replica.py` script.
 
 ARKitScene scenes can be converted using `scripts/convert_arkitscenes.py`. See `python scripts/convert_arkitscenes.py --help` for usage instructions.
 
-### [Debugging] Running scenes in `instant-ngp`
+## Debugging
+
+### Running scenes in `instant-ngp`
 
 For debugging, visualization and for comparing results, the project includes a script to convert scenes for running in [`instant-ngp`](https://github.com/NVlabs/instant-ngp).
 
