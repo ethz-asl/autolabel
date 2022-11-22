@@ -105,7 +105,8 @@ def write_scene(flags, scene_name, trajectory, rgb_images, depth_images,
 
         pose, time_diff = find_pose(trajectory, rgb_name)
         if time_diff > eps:
-            print(f"Skipping {rgb_name} due to time diff {time_diff:.03}", end='\r')
+            print(f"Skipping {rgb_name} due to time diff {time_diff:.03}",
+                  end='\r')
             continue
         else:
             print(f"Including {rgb_name} time diff {time_diff:.03}", end='\r')
