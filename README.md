@@ -137,17 +137,12 @@ The computed outputs are:
 
 ## Datasets
 
-### Capturing your own datasets
+Data cam be imported from various sources, including:
+- The [Stray Scanner app](https://apps.apple.com/us/app/stray-scanner/id1557051662)
+- [SemanticNeRF replica renders](https://github.com/Harry-Zhi/semantic_nerf/)
+- [ARKitScenes](https://github.com/apple/ARKitScenes)
 
-If you have a LiDAR enabled iOS device, you can use the [Stray Scanner](https://apps.apple.com/us/app/stray-scanner/id1557051662) app to record data. The script at `scripts/convert_scanner.py` will allow you to convert a scene recorded using the app to the above format. You can then run the `mapping.py` script to run structure from motion and compute the other outputs.
-
-### Importing data from other datasets
-
-We have written data conversion scripts for different publicly available datasets.
-
-Renders from the [Replica](https://github.com/facebookresearch/Replica-Dataset) dataset published by [SemanticNeRF](https://github.com/Harry-Zhi/semantic_nerf/) can be converted using the `scripts/convert_replica.py` script.
-
-ARKitScene scenes can be converted using `scripts/convert_arkitscenes.py`. See `python scripts/convert_arkitscenes.py --help` for usage instructions.
+See the [data documentation](docs/data.md) for instructions on how to import from different sources.
 
 ## Debugging
 
