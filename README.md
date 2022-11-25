@@ -135,11 +135,18 @@ The computed outputs are:
 - `intrinsics.txt` inferred camera intrinsic parameters
 - `bbox.txt` scene bounds
 
-### Recording data
+## Datasets
 
-If you have a LiDAR enabled iOS device, you can use the [Stray Scanner](https://apps.apple.com/us/app/stray-scanner/id1557051662) app to record data. The script at `scripts/convert_scanner.py` will allow you to convert a scene recorded using the app to the above format. You can then run the `mapping.py` script to run structure from motion and compute the other outputs.
+Data cam be imported from various sources, including:
+- The [Stray Scanner app](https://apps.apple.com/us/app/stray-scanner/id1557051662)
+- [SemanticNeRF replica renders](https://github.com/Harry-Zhi/semantic_nerf/)
+- [ARKitScenes](https://github.com/apple/ARKitScenes)
 
-### [Debugging] Running scenes in `instant-ngp`
+See the [data documentation](docs/data.md) for instructions on how to import from different sources.
+
+## Debugging
+
+### Running scenes in `instant-ngp`
 
 For debugging, visualization and for comparing results, the project includes a script to convert scenes for running in [`instant-ngp`](https://github.com/NVlabs/instant-ngp).
 
