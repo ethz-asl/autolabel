@@ -153,7 +153,7 @@ For debugging, visualization and for comparing results, the project includes a s
 To do so, assuming you have `instant-ngp` installed, you can:
 1. Convert the dataset generated through `autolabel` to a format readable by `instant-ngp` using the script [`scripts/convert_to_instant_ngp.py`](./scripts/convert_to_instant_ngp.py). Example usage:
     ```bash
-    python scripts/convert_to_instant_ngp.py ---dataset_folder <scene>
+    python scripts/convert_to_instant_ngp.py --dataset_folder <scene>
     ```
 2. Run `instant-ngp` on the converted dataset:
     ```bash
