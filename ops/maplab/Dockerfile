@@ -45,6 +45,7 @@ COPY map.sh /home/maplab_user/map.sh
 COPY run_rovioli.sh /home/maplab_user/run_rovioli.sh
 COPY maplab_console_script.yaml /home/maplab_user/maplab_console_script.yaml
 COPY convert_to_autolabel.py /home/maplab_user/convert_to_autolabel.py
+COPY create_rosbag.py /home/maplab_user/create_rosbag.py
 
 ENTRYPOINT ["bash", "/home/maplab_user/map.sh"]
 

@@ -11,7 +11,7 @@ source /home/maplab_user/ws/devel/setup.bash
 rosrun rovioli rovioli \
 	  --v=1 \
 		--alsologtostderr=1 \
-		--vio_camera_topic_suffix "image_rect_color" \
+		--vio_camera_topic_suffix "image_raw" \
 		--sensor_calibration_file "$SENSOR_CALIBRATION" \
 		--datasource_type "rosbag" \
 		--save_map_folder "$MAP_FOLDER" \
