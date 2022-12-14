@@ -25,7 +25,7 @@ def read_args():
 def write_frames(scan_dir, rgb_out_dir, rotate=False, subsample=1):
     rgb_video = os.path.join(scan_dir, 'rgb.mp4')
     video = io.vreader(rgb_video)
-    out_idx = 0
+    img_idx = 0
     for i, frame in tqdm(enumerate(video), desc="Writing RGB"):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         if i % subsample != 0:
@@ -33,8 +33,8 @@ def write_frames(scan_dir, rgb_out_dir, rotate=False, subsample=1):
         if rotate:
             frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
-        frame_path = os.path.join(rgb_out_dir, f"{out_idx:05}.jpg")
-        out_idx += 1
+        frame_path = os.path.join(rgb_out_dir, f"{img_idx:05}.jpg")
+        img_idx += 1
         params = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
         cv2.imwrite(frame_path, frame, params)
 
@@ -43,7 +43,7 @@ def write_depth(scan_dir, depth_out_dir, rotate=False, subsample=1):
     depth_dir_in = os.path.join(scan_dir, 'depth')
     confidence_dir = os.path.join(scan_dir, 'confidence')
     files = sorted(os.listdir(depth_dir_in))
-    out_idx = 0
+    img_idx = 0
     for i, filename in tqdm(enumerate(files), desc="Writing Depth"):
         if '.png' not in filename:
             continue
@@ -61,8 +61,10 @@ def write_depth(scan_dir, depth_out_dir, rotate=False, subsample=1):
             confidence = cv2.rotate(confidence, cv2.ROTATE_90_CLOCKWISE)
 
         depth[confidence < 2] = 0
-        cv2.imwrite(os.path.join(depth_out_dir, f"{int(number):05}" + '.png'),
+        cv2.imwrite(os.path.join(depth_out_dir, f"{int(img_idx):05}" + '.png'),
                     depth)
+        img_idx += 1
+    return img_idx
 
 
 def write_intrinsics(scan_dir, out_dir, rotate=False):
