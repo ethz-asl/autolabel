@@ -115,7 +115,7 @@ class ALNetwork(NeRFRenderer):
             n_input_dims=self.geo_feat_dim,
             n_output_dims=self.hidden_dim_semantic,
             network_config={
-                "otype": "FullyFusedMLP",
+                "otype": "CutlassMLP",
                 "activation": "ReLU",
                 "output_activation": "ReLU",
                 "n_neurons": self.hidden_dim_semantic,

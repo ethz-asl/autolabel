@@ -30,13 +30,14 @@ def model_flag_parser():
     parser.add_argument('--features',
                         type=str,
                         default=None,
-                        choices=[None, 'fcn50', 'dino'],
+                        choices=[None, 'fcn50', 'dino', 'lseg'],
                         help="Use semantic feature supervision.")
     parser.add_argument('--rgb-weight', default=1.0, type=float)
     parser.add_argument('--semantic-weight', default=1.0, type=float)
     parser.add_argument('--feature-weight', default=0.5, type=float)
     parser.add_argument('--depth-weight', default=0.1, type=float)
     parser.add_argument('--dropout', default=0.1, type=float)
+    parser.add_argument('--feature-dim', default=64, type=int)
     return parser
 
 
@@ -69,7 +70,7 @@ def create_model(min_bounds, max_bounds, n_classes, flags):
                      encoding=flags.encoding,
                      bound=float(bound),
                      dropout=flags.dropout,
-                     hidden_dim_semantic=64,
+                     hidden_dim_semantic=flags.feature_dim,
                      cuda_ray=False,
                      density_scale=1,
                      semantic_classes=n_classes)
