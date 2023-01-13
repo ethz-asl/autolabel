@@ -15,8 +15,7 @@ class Dino:
                                     'dino_vits8').half().cuda()
         self.model.eval()
 
-    @property
-    def shape(self):
+    def shape(self, *args):
         return (90, 120)
 
     def __call__(self, x):
@@ -25,5 +24,4 @@ class Dino:
         x = self.model.get_intermediate_layers(x.half())
         width_out = W // 8
         height_out = H // 8
-        return x[0][:, 1:, :].reshape(B, height_out, width_out,
-                                      384).detach().cpu().numpy()
+        return x[0][:, 1:, :].reshape(B, height_out, width_out, 384).detach()

@@ -42,9 +42,10 @@ class LSegFE:
         H_out, W_out = H // 2, W // 2
         out = []
         for image in x:
+            image = image.contiguous()
             out.append(self.evaluator.compute_features(image[None].half()))
 
         out = torch.cat(out, dim=0)
         out = F.interpolate(out, size=(H_out, W_out), mode='nearest')
 
-        return out.cpu().permute(0, 2, 3, 1).numpy()
+        return out.permute(0, 2, 3, 1)

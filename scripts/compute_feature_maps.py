@@ -84,7 +84,7 @@ def extract_features(extractor, scene, output_file, flags):
             batch = paths[i * batch_size:(i + 1) * batch_size]
             image = torch.stack([read_image(p) for p in batch]).cuda()
             image = F.interpolate(image, [H, W])
-            features = extractor(image / 255.)
+            features = extractor(image / 255.).cpu().numpy()
 
             extracted += [f for f in features]
 
