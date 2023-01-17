@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from torchvision.io.image import read_image
 from PIL import Image
 from autolabel.utils import Scene
+from autolabel.utils.feature_utils import get_feature_extractor
 from autolabel.models import Autoencoder
 from sklearn import decomposition
 from tqdm import tqdm
@@ -148,19 +149,6 @@ def write_video(features, out):
         writer.writeFrame(frame)
 
 
-def get_feature_extractor(flags):
-    from autolabel.features import FCN50, Dino
-    if flags.features == 'fcn50':
-        return FCN50()
-    elif flags.features == 'dino':
-        return Dino()
-    elif flags.features == 'lseg':
-        from autolabel.features import lseg
-        return lseg.LSegFE(flags.checkpoint)
-    else:
-        raise NotImplementedError()
-
-
 def main():
     flags = read_args()
     np.random.seed(0)
@@ -172,7 +160,7 @@ def main():
                             libver='latest')
     group = output_file.create_group('features')
 
-    extractor = get_feature_extractor(flags)
+    extractor = get_feature_extractor(flags.features, flags.checkpoint)
 
     extract_features(extractor, scene, group, flags)
     if flags.vis:

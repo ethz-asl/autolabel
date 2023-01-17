@@ -1,4 +1,5 @@
 import torch
+import clip
 from torch.nn import functional as F
 from modules.lseg_module import LSegModule
 from additional_utils.models import LSeg_MultiEvalModule
@@ -31,9 +32,18 @@ class LSegFE:
         scales = [0.75, 1.0, 2.0]
         self.evaluator = LSeg_MultiEvalModule(module, scales=scales,
                                               flip=True).half().cuda().eval()
+        self.text_encoder = module.net.clip_pretrained.to(torch.float32).cuda()
 
     def shape(self, input_shape):
         return (input_shape[0] // 2, input_shape[1] // 2)
+
+    def encode_text(self, text):
+        """
+        text: list of N strings to encode
+        returns: torch tensor size N x 512
+        """
+        features = self.text_encoder.encode_text(clip.tokenize(text).cuda())
+        return features / torch.norm(features, dim=-1, keepdim=True)
 
     def __call__(self, x):
         x = self.transform(x)
