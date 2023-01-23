@@ -57,6 +57,8 @@ class BBoxComputer:
         aabb = np.zeros((2, 3))
         aabb[0, :] = o3d_aabb.get_min_bound()
         aabb[1, :] = o3d_aabb.get_max_bound()
+        aabb[0, :] = aabb[0, :] - 0.1 * (aabb[1, :] - aabb[0, :])
+        aabb[1, :] = aabb[1, :] + 0.1 * (aabb[1, :] - aabb[0, :])
         return aabb
 
 
