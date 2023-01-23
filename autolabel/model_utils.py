@@ -36,7 +36,6 @@ def model_flag_parser():
     parser.add_argument('--semantic-weight', default=1.0, type=float)
     parser.add_argument('--feature-weight', default=0.5, type=float)
     parser.add_argument('--depth-weight', default=0.1, type=float)
-    parser.add_argument('--dropout', default=0.1, type=float)
     parser.add_argument('--feature-dim', default=64, type=int)
     return parser
 
@@ -47,7 +46,7 @@ def model_hash(flags):
         features = flags.features
     string = f"g{flags.geometric_features}_{flags.encoding}_{features}"
     string += f"_rgb{flags.rgb_weight}_d{flags.depth_weight}_s{flags.semantic_weight}"
-    string += f"_f{flags.feature_weight}_do{flags.dropout}"
+    string += f"_f{flags.feature_weight}"
     return string
 
 
@@ -69,7 +68,6 @@ def create_model(min_bounds, max_bounds, n_classes, flags):
                      geo_feat_dim=flags.geometric_features,
                      encoding=flags.encoding,
                      bound=float(bound),
-                     dropout=flags.dropout,
                      hidden_dim_semantic=flags.feature_dim,
                      cuda_ray=False,
                      density_scale=1,
