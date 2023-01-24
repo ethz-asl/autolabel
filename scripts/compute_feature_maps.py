@@ -69,37 +69,39 @@ def compute_size(image_path, feature):
     if feature in ['fcn50', 'dino']:
         target_size = 720
     elif feature == 'lseg':
-        target_size = 480
+        target_size = 242
     scale_factor = target_size / short_side
     return int(H * scale_factor), int(W * scale_factor)
 
 
 def extract_features(extractor, scene, output_file, flags):
     paths = scene.rgb_paths()
-
-    extracted = []
     H, W = compute_size(paths[0], flags.features)
-    with torch.inference_mode():
-        batch_size = 2
-        for i in tqdm(range(math.ceil(len(paths) / batch_size))):
-            batch = paths[i * batch_size:(i + 1) * batch_size]
-            image = torch.stack([read_image(p) for p in batch]).cuda()
-            image = F.interpolate(image, [H, W])
-            features = extractor(image / 255.).cpu().numpy()
-
-            extracted += [f for f in features]
 
     shape = extractor.shape((H, W))
     dataset = output_file.create_dataset(flags.features,
                                          (len(paths), *shape, flags.dim),
                                          dtype=np.float16,
                                          compression='lzf')
+
+    extracted = []
+    with torch.inference_mode():
+        batch_size = 2
+        for i in tqdm(range(math.ceil(len(paths) / batch_size))):
+            index = slice(i * batch_size, (i + 1) * batch_size)
+            batch = paths[index]
+            image = torch.stack([read_image(p) for p in batch]).cuda()
+            image = F.interpolate(image, [H, W])
+            features = extractor(image / 255.).cpu().numpy()
+
+            if flags.autoencode:
+                extracted += [f for f in features]
+            else:
+                dataset[index] = features[..., :flags.dim]
+
     if flags.autoencode:
         features = compress_features(extracted, flags.dim)
         dataset[:] = features
-    else:
-        for i, feature in enumerate(extracted):
-            dataset[i] = feature[:, :, :flags.dim]
 
     N, H, W, C = dataset[:].shape
     X = dataset[:].reshape(N * H * W, C)

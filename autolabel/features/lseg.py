@@ -29,9 +29,9 @@ class LSegFE:
         # Skip totensor operation.
         self.transform = transforms.Compose(module.val_transform.transforms[1:])
         net = module.net.cuda()
-        scales = [0.75, 1.0, 2.0]
+        scales = [1.0]
         self.evaluator = LSeg_MultiEvalModule(module, scales=scales,
-                                              flip=True).half().cuda().eval()
+                                              flip=False).half().cuda().eval()
         self.text_encoder = module.net.clip_pretrained.to(torch.float32).cuda()
 
     def shape(self, input_shape):
@@ -51,9 +51,9 @@ class LSegFE:
         # Return half size features
         H_out, W_out = H // 2, W // 2
         out = []
+        x = [image[None].half() for image in x]
         for image in x:
-            image = image.contiguous()
-            out.append(self.evaluator.compute_features(image[None].half()))
+            out.append(self.evaluator.compute_features(image))
 
         out = torch.cat(out, dim=0)
         out = F.interpolate(out, size=(H_out, W_out), mode='nearest')
