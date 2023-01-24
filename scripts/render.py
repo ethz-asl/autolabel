@@ -100,14 +100,17 @@ def render(model,
     p_semantic = compute_semantics(outputs, classes, feature_transform)
     frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)
     square_size = (size[0] // 2, size[1] // 2)
-    gt_rgb = (batch['pixels'] * 255.0).astype(np.uint8)
+    p_rgb = (outputs['image'].cpu().numpy() * 255.0).astype(np.uint8)
     p_depth = outputs['depth']
-    frame[:square_size[1], :square_size[0], :] = gt_rgb
+    frame[:square_size[1], :square_size[0], :] = p_rgb
     frame[:square_size[1], square_size[0]:] = visualization.visualize_depth(
         p_depth.cpu().numpy(), maxdepth=maxdepth)[:, :, :3]
-    frame[square_size[1]:, :square_size[0]] = COLORS[p_semantic]
-    p_features = feature_transform(outputs['semantic_features'].cpu().numpy())
-    frame[square_size[1]:, square_size[0]:] = p_features
+    frame[square_size[1]:, :square_size[0]] = COLORS[p_semantic %
+                                                     COLORS.shape[0]]
+    if feature_transform is not None:
+        p_features = feature_transform(
+            outputs['semantic_features'].cpu().numpy())
+        frame[square_size[1]:, square_size[0]:] = p_features
     return frame
 
 
@@ -115,12 +118,13 @@ def main():
     flags = read_args()
 
     model_params = model_utils.read_params(flags.model_dir)
-    dataset = SceneDataset('train',
+    dataset = SceneDataset('test',
                            flags.scene,
                            size=(480, 360),
                            batch_size=16384,
                            features=model_params.features,
-                           load_semantic=False)
+                           load_semantic=False,
+                           lazy=True)
 
     n_classes = dataset.n_classes if dataset.n_classes is not None else 2
     model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
@@ -129,8 +133,11 @@ def main():
     model_utils.load_checkpoint(model,
                                 os.path.join(flags.model_dir, 'checkpoints'))
 
-    feature_transform = FeatureTransformer(flags.scene, model_params.features,
-                                           flags.classes, flags.checkpoint)
+    feature_transform = None
+    if model_params.features is not None:
+        feature_transform = FeatureTransformer(flags.scene,
+                                               model_params.features,
+                                               flags.classes, flags.checkpoint)
     writer = FFmpegWriter(flags.out,
                           inputdict={'-framerate': f'{flags.fps}'},
                           outputdict={
