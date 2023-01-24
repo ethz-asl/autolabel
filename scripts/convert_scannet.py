@@ -21,6 +21,11 @@ def read_args():
         required=True,
         help="Path to label map .tsv file with semantic label names and ids.")
     parser.add_argument('--out', required=True)
+    parser.add_argument('--stride',
+                        '-s',
+                        type=int,
+                        default=1,
+                        help="Use only every s-th frame.")
     return parser.parse_args()
 
 
@@ -159,18 +164,23 @@ def main():
         os.makedirs(pose_dir, exist_ok=True)
         os.makedirs(semantic_dir, exist_ok=True)
 
-        numbers = []
+        semantic_files = os.listdir(semantic_dir_in)
+        semantic_files = sorted(semantic_files,
+                                key=lambda x: int(x.split('.')[0]))
+
         with SensReader(sensor_file) as reader:
 
             scene_out = os.path.join(flags.out, scene)
             write_intrinsics(scene_out, reader)
             write_metadata(scene_out, label_ids)
 
-            for i, (T_WC, rgb, depth) in enumerate(reader.read()):
+            for i, ((T_WC, rgb, depth), semantic_file) in enumerate(
+                    zip(reader.read(), semantic_files)):
+                if i % flags.stride != 0:
+                    continue
                 print("Processing frame %d" % i, end='\r')
                 T_CW = np.linalg.inv(T_WC)
                 number = f"{i:06}"
-                numbers.append(number)
                 rgb_path = os.path.join(rgb_dir, f"{number}.jpg")
                 depth_path = os.path.join(depth_dir, f"{number}.png")
                 pose_path = os.path.join(pose_dir, f"{number}.txt")
@@ -178,19 +188,13 @@ def main():
                 cv2.imwrite(depth_path, depth)
                 np.savetxt(pose_path, T_CW)
 
-        semantic_files = os.listdir(semantic_dir_in)
-        semantic_files = sorted(semantic_files,
-                                key=lambda x: int(x.split('.')[0]))
-        for i, semantic_file in enumerate(semantic_files):
-            print("Writing semantic frame %d" % i, end='\r')
-            number = numbers[i]
-            semantic_path = os.path.join(semantic_dir, f"{number}.png")
-            semantic_frame = cv2.imread(
-                os.path.join(semantic_dir_in, semantic_file), -1)
-            # 0 is for void class for which an annotation has not been defined.
-            # Add 1 as offset.
-            out_semantic = label_ids[semantic_frame] + 1
-            cv2.imwrite(semantic_path, out_semantic)
+                semantic_path = os.path.join(semantic_dir, f"{number}.png")
+                semantic_frame = cv2.imread(
+                    os.path.join(semantic_dir_in, semantic_file), -1)
+                # 0 is for void class for which an annotation has not been defined.
+                # Add 1 as offset.
+                out_semantic = label_ids[semantic_frame] + 1
+                cv2.imwrite(semantic_path, out_semantic)
 
 
 if __name__ == "__main__":
