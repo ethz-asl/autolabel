@@ -63,8 +63,8 @@ def create_model(min_bounds, max_bounds, n_classes, flags):
     bound = (extents - (min_bounds + max_bounds) * 0.5).max()
     return ALNetwork(num_layers=2,
                      num_layers_color=2,
-                     hidden_dim_color=64,
-                     hidden_dim=64,
+                     hidden_dim_color=128,
+                     hidden_dim=128,
                      geo_feat_dim=flags.geometric_features,
                      encoding=flags.encoding,
                      bound=float(bound),
