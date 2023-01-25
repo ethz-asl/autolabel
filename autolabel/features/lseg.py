@@ -42,8 +42,14 @@ class LSegFE:
         text: list of N strings to encode
         returns: torch tensor size N x 512
         """
-        features = self.text_encoder.encode_text(clip.tokenize(text).cuda())
-        return features / torch.norm(features, dim=-1, keepdim=True)
+        with torch.inference_mode():
+            tokenized = clip.tokenize(text).cuda()
+            features = []
+            for item in tokenized:
+                f = self.text_encoder.encode_text(item[None])[0]
+                features.append(f)
+            features = torch.stack(features, dim=0)
+            return features / torch.norm(features, dim=-1, keepdim=True)
 
     def __call__(self, x):
         x = self.transform(x)

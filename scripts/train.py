@@ -100,12 +100,12 @@ def main():
                             use_checkpoint='latest')
     trainer.train(train_dataloader, epochs)
 
-    testset = SceneDataset('test',
-                           flags.scene,
-                           factor=flags.factor_test,
-                           batch_size=flags.batch_size * 2)
     trainer.save_checkpoint()
     if flags.eval:
+        testset = SceneDataset('test',
+                               flags.scene,
+                               factor=flags.factor_test,
+                               batch_size=flags.batch_size * 2)
         test_dataloader = torch.utils.data.DataLoader(LenDataset(
             testset, testset.rotations.shape[0]),
                                                       batch_size=None,

@@ -1,6 +1,7 @@
 import os
 import math
 import argparse
+import pandas
 from argparse import Namespace
 from os import path
 import csv
@@ -45,6 +46,10 @@ def read_args():
                         type=str,
                         nargs='+',
                         help="Which classes to segment the scene into.")
+    parser.add_argument('--label-map',
+                        default=None,
+                        type=str,
+                        help="Path to list of labels.")
     return parser.parse_args()
 
 
@@ -59,13 +64,11 @@ class FeatureTransformer:
             self.feature_range = features.attrs['range']
 
         if feature_name is not None:
-            self.extractor = get_feature_extractor(feature_name, checkpoint)
-            self.text_features = self._encode_text(classes)
-        else:
-            self.extractor = None
+            extractor = get_feature_extractor(feature_name, checkpoint)
+            self.text_features = self._encode_text(extractor, classes)
 
-    def _encode_text(self, text):
-        return self.extractor.encode_text(text)
+    def _encode_text(self, extractor, text):
+        return extractor.encode_text(text)
 
     def __call__(self, p_features):
         H, W, C = p_features.shape
@@ -76,14 +79,19 @@ class FeatureTransformer:
 
 
 def compute_semantics(outputs, classes, feature_transform):
-    if classes is None:
-        return outputs['semantic'].argmax(dim=-1).cpu().numpy()
-    else:
+    if classes is not None:
         features = outputs['semantic_features']
-        features = features / torch.norm(features, dim=-1, keepdim=True)
+        features = (features / torch.norm(features, dim=-1, keepdim=True))
         text_features = feature_transform.text_features
-        similarity = (features[:, :, None, :] * text_features).sum(dim=-1)
-        return similarity.argmax(dim=-1).cpu().numpy()
+        H, W, D = features.shape
+        C = text_features.shape[0]
+        similarities = torch.zeros((H, W, C), dtype=features.dtype)
+        for i in range(H):
+            similarities[i, :, :] = (features[i, :, None] *
+                                     text_features).sum(dim=-1).cpu()
+        return similarities.argmax(dim=-1)
+    else:
+        return outputs['semantic'].argmax(dim=-1).cpu().numpy()
 
 
 def render(model,
@@ -111,13 +119,25 @@ def render(model,
         p_features = feature_transform(
             outputs['semantic_features'].cpu().numpy())
         frame[square_size[1]:, square_size[0]:] = p_features
+
     return frame
 
 
 def main():
     flags = read_args()
-
     model_params = model_utils.read_params(flags.model_dir)
+
+    classes = flags.classes
+    if flags.label_map is not None:
+        label_map = pandas.read_csv(flags.label_map)
+        classes = label_map['prompt'].values
+
+    feature_transform = None
+    if model_params.features is not None:
+        feature_transform = FeatureTransformer(flags.scene,
+                                               model_params.features, classes,
+                                               flags.checkpoint)
+
     dataset = SceneDataset('test',
                            flags.scene,
                            size=(480, 360),
@@ -133,11 +153,6 @@ def main():
     model_utils.load_checkpoint(model,
                                 os.path.join(flags.model_dir, 'checkpoints'))
 
-    feature_transform = None
-    if model_params.features is not None:
-        feature_transform = FeatureTransformer(flags.scene,
-                                               model_params.features,
-                                               flags.classes, flags.checkpoint)
     writer = FFmpegWriter(flags.out,
                           inputdict={'-framerate': f'{flags.fps}'},
                           outputdict={
@@ -154,7 +169,7 @@ def main():
                                dataset,
                                feature_transform,
                                maxdepth=flags.max_depth,
-                               classes=flags.classes)
+                               classes=classes)
                 writer.writeFrame(frame)
     writer.close()
 
