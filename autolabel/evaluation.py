@@ -5,6 +5,7 @@ import cv2
 from PIL import Image
 from tqdm import tqdm
 from autolabel.constants import COLORS
+from autolabel.utils.feature_utils import get_feature_extractor
 from rich.progress import track
 
 
@@ -86,3 +87,102 @@ class Evaluator:
                                      self.name + f"_{example_index}.jpg")
             image = cv2.addWeighted(rgb, 0.5, p_semantic, 0.5, 0.0)
             Image.fromarray(image).save(save_path)
+
+
+class OpenVocabEvaluator(Evaluator):
+
+    def __init__(self,
+                 model,
+                 label_map,
+                 model_params,
+                 device='cuda:0',
+                 name="model",
+                 checkpoint=None,
+                 save_figures=None,
+                 stride=1):
+        self.model = model
+        self.label_map = label_map
+        self.model_params = model_params
+        self.feature_checkpoint = checkpoint
+        self.device = device
+        self.name = name
+        self.save_figures = save_figures
+        self.stride = stride
+        self.text_features = self._infer_text_features()
+
+    def _infer_text_features(self):
+        extractor = get_feature_extractor(self.model_params.features,
+                                          self.feature_checkpoint)
+        return extractor.encode_text(self.label_map['prompt'].values)
+
+    def eval(self, dataset, visualize=False):
+        ious = []
+        gt_semantic = dataset.scene.gt_semantic()
+        with torch.inference_mode():
+            with torch.cuda.amp.autocast(enabled=True):
+                self.model.eval()
+                for i, gt_semantic in enumerate(
+                        tqdm(gt_semantic, desc="Evaluating")):
+                    # For debugging
+                    if i % self.stride != 0:
+                        continue
+                    iou = {}
+                    batch = dataset._get_test(i)
+                    p_semantic = self._predict_semantic(batch)
+                    gt_semantic = self._read_gt_semantic(
+                        gt_semantic, dataset.camera)
+                    intersection = (p_semantic == gt_semantic).sum().item()
+                    union = gt_semantic.numel()
+                    total_iou = float(intersection) / float(union)
+                    iou['total'] = total_iou
+                    for i, prompt in zip(self.label_map['id'].values,
+                                         self.label_map['prompt'].values):
+                        gt_mask = gt_semantic == i
+                        p_mask = p_semantic == i
+                        intersection = torch.bitwise_and(p_mask,
+                                                         gt_mask).sum().item()
+                        union = torch.bitwise_or(p_mask, gt_mask).sum().item()
+                        import ipdb
+                        ipdb.set_trace()
+                        if union == 0:
+                            class_iou = None
+                        else:
+                            class_iou = float(intersection) / float(union)
+                        iou[prompt] = class_iou
+                    ious.append(iou)
+        out = {}
+        for key in ious[0].keys():
+            values = [
+                iou[key] for iou in ious if iou.get(key, None) is not None
+            ]
+            if len(values) == 0:
+                out[key] = None
+            else:
+                import ipdb
+                ipdb.set_trace()
+                out[key] = np.mean(values)
+        return out
+
+    def _predict_semantic(self, batch):
+        rays_o = torch.tensor(batch['rays_o']).to(self.device)
+        rays_d = torch.tensor(batch['rays_d']).to(self.device)
+        depth = torch.tensor(batch['depth']).to(self.device)
+        outputs = self.model.render(rays_o, rays_d, staged=True, perturb=False)
+        features = outputs['semantic_features']
+        features = (features / torch.norm(features, dim=-1, keepdim=True))
+        text_features = self.text_features
+        H, W, D = features.shape
+        C = text_features.shape[0]
+        similarities = torch.zeros((H, W, C),
+                                   dtype=features.dtype,
+                                   device=self.device)
+        for i in range(H):
+            similarities[i, :, :] = (features[i, :, None] *
+                                     text_features).sum(dim=-1)
+        return similarities.argmax(dim=-1)
+
+    def _read_gt_semantic(self, path, camera):
+        semantic = cv2.imread(path, -1)
+        return torch.tensor(
+            (cv2.resize(semantic, camera.size, cv2.INTER_NEAREST) - 1).astype(
+                np.int64)).to(self.device)

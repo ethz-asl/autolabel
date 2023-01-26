@@ -106,6 +106,9 @@ class Scene:
     def raw_depth_paths(self):
         return self._get_paths(self.raw_depth_path)
 
+    def gt_semantic(self):
+        return self._get_paths(os.path.join(self.path, 'gt_semantic'))
+
     def image_names(self):
         """
         Returns the filenames of rgb images without file extensions.
