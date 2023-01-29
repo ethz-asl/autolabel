@@ -127,17 +127,6 @@ def main():
     flags = read_args()
     model_params = model_utils.read_params(flags.model_dir)
 
-    classes = flags.classes
-    if flags.label_map is not None:
-        label_map = pandas.read_csv(flags.label_map)
-        classes = label_map['prompt'].values
-
-    feature_transform = None
-    if model_params.features is not None:
-        feature_transform = FeatureTransformer(flags.scene,
-                                               model_params.features, classes,
-                                               flags.checkpoint)
-
     dataset = SceneDataset('test',
                            flags.scene,
                            size=(480, 360),
@@ -145,6 +134,20 @@ def main():
                            features=model_params.features,
                            load_semantic=False,
                            lazy=True)
+
+    classes = flags.classes
+    if flags.label_map is not None:
+        label_map = pandas.read_csv(flags.label_map)
+        classes_in_scene = dataset.scene.metadata.get('classes', None)
+        if classes_in_scene is not None:
+            label_map = label_map[label_map['id'].isin(classes_in_scene)]
+        classes = label_map['prompt'].values
+
+    feature_transform = None
+    if model_params.features is not None:
+        feature_transform = FeatureTransformer(flags.scene,
+                                               model_params.features, classes,
+                                               flags.checkpoint)
 
     n_classes = dataset.n_classes if dataset.n_classes is not None else 2
     model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,

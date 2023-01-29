@@ -98,7 +98,7 @@ class OpenVocabEvaluator(Evaluator):
                  device='cuda:0',
                  name="model",
                  checkpoint=None,
-                 save_figures=None,
+                 debug=False,
                  stride=1):
         self.model = model
         self.label_map = label_map
@@ -106,8 +106,9 @@ class OpenVocabEvaluator(Evaluator):
         self.feature_checkpoint = checkpoint
         self.device = device
         self.name = name
-        self.save_figures = save_figures
+        self.debug = debug
         self.stride = stride
+        self.label_id_map = torch.tensor(self.label_map['id'].values).to(device)
         self.text_features = self._infer_text_features()
 
     def _infer_text_features(self):
@@ -135,15 +136,35 @@ class OpenVocabEvaluator(Evaluator):
                     union = gt_semantic.numel()
                     total_iou = float(intersection) / float(union)
                     iou['total'] = total_iou
+
+                    if self.debug:
+                        from matplotlib import pyplot as plt
+                        import ipdb
+                        ipdb.set_trace()
+
+                        axis = plt.subplot2grid((1, 2), loc=(0, 0))
+                        p_sem_vis = COLORS[p_semantic.cpu().numpy() %
+                                           COLORS.shape[0]]
+                        rgb = (batch['pixels'] * 255).astype(np.uint8)
+                        axis.imshow(rgb)
+                        axis.imshow(p_sem_vis, alpha=0.5)
+                        axis.set_title(f"IoU: {total_iou:.2f}")
+                        axis = plt.subplot2grid((1, 2), loc=(0, 1))
+                        axis.imshow(COLORS[gt_semantic.cpu().numpy() %
+                                           COLORS.shape[0]])
+                        plt.tight_layout()
+                        plt.show()
+
                     for i, prompt in zip(self.label_map['id'].values,
                                          self.label_map['prompt'].values):
                         gt_mask = gt_semantic == i
+                        if gt_mask.sum() == 0:
+                            # Skip classes that are not present in the frame.
+                            continue
                         p_mask = p_semantic == i
                         intersection = torch.bitwise_and(p_mask,
                                                          gt_mask).sum().item()
                         union = torch.bitwise_or(p_mask, gt_mask).sum().item()
-                        import ipdb
-                        ipdb.set_trace()
                         if union == 0:
                             class_iou = None
                         else:
@@ -158,8 +179,6 @@ class OpenVocabEvaluator(Evaluator):
             if len(values) == 0:
                 out[key] = None
             else:
-                import ipdb
-                ipdb.set_trace()
                 out[key] = np.mean(values)
         return out
 
@@ -179,10 +198,11 @@ class OpenVocabEvaluator(Evaluator):
         for i in range(H):
             similarities[i, :, :] = (features[i, :, None] *
                                      text_features).sum(dim=-1)
-        return similarities.argmax(dim=-1)
+        similarities = similarities.argmax(dim=-1)
+        return self.label_id_map[similarities]
 
     def _read_gt_semantic(self, path, camera):
         semantic = cv2.imread(path, -1)
         return torch.tensor(
-            (cv2.resize(semantic, camera.size, cv2.INTER_NEAREST) - 1).astype(
-                np.int64)).to(self.device)
+            (cv2.resize(semantic, camera.size,
+                        cv2.INTER_NEAREST)).astype(np.int64)).to(self.device)

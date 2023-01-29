@@ -33,19 +33,19 @@ def process_label_map(path, out):
     label_map = pandas.read_csv(path, sep='\t')
     ids = label_map['id'].values
     texts = label_map['raw_category'].values.tolist()
-    indices, prompts = [0], ['background']
-    mapping = np.zeros(ids.max() + 1, np.uint16)
+    indices, prompts = [], []
+    # Figure out what is going on with the background class
+    mapping = np.zeros(ids.max(), np.uint16)
     for i, (num, text) in enumerate(zip(ids, texts)):
         indices.append(i)
         prompts.append(text)
-        # 0 is void class
-        mapping[num] = i + 1
+        mapping[num - 1] = i
 
     label_map_out = os.path.join(out, 'label_map.csv')
     df = pandas.DataFrame({
         'id': indices,
         'prompt': prompts,
-        'scannet_id': [0] + ids.tolist()
+        'scannet_id': ids.tolist()
     })
     df.to_csv(label_map_out, index=False)
 
@@ -58,9 +58,12 @@ def write_intrinsics(out, sensor_reader):
     np.savetxt(intrinsics_path, intrinsics)
 
 
-def write_metadata(out, label_ids):
+def write_metadata(out, label_ids, classes_in_scene):
     metadata_path = os.path.join(out, "metadata.json")
-    metadata = {"n_classes": int(label_ids.max()) + 1}
+    metadata = {
+        "n_classes": int(label_ids.max()),
+        'classes': list(sorted(classes_in_scene))
+    }
     with open(metadata_path, 'w') as f:
         f.write(json.dumps(metadata, indent=2))
 
@@ -158,7 +161,7 @@ def main():
         rgb_dir = os.path.join(flags.out, scene, "rgb")
         depth_dir = os.path.join(flags.out, scene, "depth")
         pose_dir = os.path.join(flags.out, scene, "pose")
-        semantic_dir = os.path.join(flags.out, scene, "semantic")
+        semantic_dir = os.path.join(flags.out, scene, "gt_semantic")
         os.makedirs(rgb_dir, exist_ok=True)
         os.makedirs(depth_dir, exist_ok=True)
         os.makedirs(pose_dir, exist_ok=True)
@@ -168,11 +171,11 @@ def main():
         semantic_files = sorted(semantic_files,
                                 key=lambda x: int(x.split('.')[0]))
 
+        classes_in_scene = set()
         with SensReader(sensor_file) as reader:
 
             scene_out = os.path.join(flags.out, scene)
             write_intrinsics(scene_out, reader)
-            write_metadata(scene_out, label_ids)
 
             for i, ((T_WC, rgb, depth), semantic_file) in enumerate(
                     zip(reader.read(), semantic_files)):
@@ -194,7 +197,11 @@ def main():
                 # 0 is for void class for which an annotation has not been defined.
                 # Add 1 as offset.
                 out_semantic = label_ids[semantic_frame] + 1
+                for i in np.unique(out_semantic):
+                    classes_in_scene.add(int(i))
                 cv2.imwrite(semantic_path, out_semantic)
+
+        write_metadata(scene_out, label_ids, classes_in_scene)
 
 
 if __name__ == "__main__":

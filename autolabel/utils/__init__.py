@@ -54,6 +54,7 @@ class Scene:
         if os.path.exists(intrinsics_path):
             self.camera = Camera.from_path(intrinsics_path, image_size)
         self._n_classes = None
+        self._metadata = None
 
     def peak_image_size(self):
         if os.path.exists(self.raw_rgb_path):
@@ -151,14 +152,19 @@ class Scene:
         return (image.shape[1], image.shape[0])
 
     @property
-    def n_classes(self):
-        if self._n_classes is None:
+    def metadata(self):
+        if self._metadata is None:
             metadata_path = os.path.join(self.path, 'metadata.json')
             if not os.path.exists(metadata_path):
                 return None
             with open(metadata_path) as f:
-                data = json.load(f)
-            self._n_classes = data['n_classes']
+                self._metadata = json.load(f)
+        return self._metadata
+
+    @property
+    def n_classes(self):
+        if self._n_classes is None:
+            self._n_classes = self.metadata['n_classes']
         return self._n_classes
 
 

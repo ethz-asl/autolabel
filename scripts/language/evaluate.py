@@ -14,7 +14,6 @@ def read_args():
     parser.add_argument('--batch-size', default=8182, type=int)
     parser.add_argument('--vis', action='store_true')
     parser.add_argument('--workspace', type=str, default=None)
-    parser.add_argument('--write-images', type=str, default=None)
     parser.add_argument('--out',
                         default=None,
                         type=str,
@@ -26,6 +25,7 @@ def read_args():
         type=int,
         default=1,
         help="Only evaluate every Nth frame to save time or for debugging.")
+    parser.add_argument('--debug', action='store_true')
     return parser.parse_args()
 
 
@@ -63,8 +63,8 @@ def main(flags):
     model = gather_models(flags)[-1]
     print(f"Using model {model}")
 
-    label_map = read_label_map(flags.label_map)
-    n_classes = len(label_map)
+    original_labels = read_label_map(flags.label_map)
+    n_classes = len(original_labels)
 
     scene_names = [os.path.basename(os.path.normpath(p)) for p in flags.scenes]
     scenes = [(s, n) for s, n in zip(flags.scenes, scene_names)]
@@ -83,6 +83,13 @@ def main(flags):
                                factor=4.0,
                                batch_size=flags.batch_size,
                                lazy=True)
+        classes_in_scene = dataset.scene.metadata.get('classes', None)
+        if classes_in_scene is None:
+            label_map = original_labels
+        else:
+            mask = original_labels['id'].isin(classes_in_scene)
+            label_map = original_labels[mask]
+
         model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
                                          dataset.n_classes, params).cuda()
         model = model.eval()
@@ -95,15 +102,12 @@ def main(flags):
         model_utils.load_checkpoint(model, checkpoint_dir)
         model = model.eval()
 
-        save_figure_dir = None
-        if flags.write_images is not None:
-            save_figure_dir = os.path.join(flags.write_images, scene_name)
         evaluator = OpenVocabEvaluator(model,
                                        label_map,
                                        model_params=params,
                                        name=scene_name,
                                        checkpoint=flags.feature_checkpoint,
-                                       save_figures=save_figure_dir,
+                                       debug=flags.debug,
                                        stride=flags.stride)
         result = evaluator.eval(dataset, flags.vis)
 
@@ -126,6 +130,9 @@ def main(flags):
     for prompt in label_map['prompt'].values:
         scene_results = []
         for i in range(len(scene_names)):
+            if prompt not in results[i]:
+                scene_results.append("N/A")
+                continue
             result = iou_to_string(results[i][prompt])
             scene_results.append(result)
         table.add_row(prompt, *scene_results)

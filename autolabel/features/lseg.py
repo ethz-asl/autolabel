@@ -57,11 +57,13 @@ class LSegFE:
         # Return half size features
         H_out, W_out = H // 2, W // 2
         out = []
-        x = [image[None].half() for image in x]
+        x = [
+            F.interpolate(image[None].half().cuda(), [H_out, W_out])
+            for image in x
+        ]
         for image in x:
             out.append(self.evaluator.compute_features(image))
 
         out = torch.cat(out, dim=0)
-        out = F.interpolate(out, size=(H_out, W_out), mode='nearest')
 
         return out.permute(0, 2, 3, 1)
