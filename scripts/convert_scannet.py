@@ -26,30 +26,72 @@ def read_args():
                         type=int,
                         default=1,
                         help="Use only every s-th frame.")
+    parser.add_argument(
+        '--config',
+        type=str,
+        default=None,
+        help=
+        "Path to remapping configuration, if any. See configs/scannet_mapping.json for an example."
+    )
     return parser.parse_args()
 
 
-def process_label_map(path, out):
-    label_map = pandas.read_csv(path, sep='\t')
-    ids = label_map['id'].values
-    texts = label_map['raw_category'].values.tolist()
-    indices, prompts = [], []
-    # Figure out what is going on with the background class
-    mapping = np.zeros(ids.max(), np.uint16)
-    for i, (num, text) in enumerate(zip(ids, texts)):
-        indices.append(i)
-        prompts.append(text)
-        mapping[num - 1] = i
+class LabelHelper:
 
-    label_map_out = os.path.join(out, 'label_map.csv')
-    df = pandas.DataFrame({
-        'id': indices,
-        'prompt': prompts,
-        'scannet_id': ids.tolist()
-    })
-    df.to_csv(label_map_out, index=False)
+    def __init__(self, label_path, config):
+        self.remapping = {}
+        self.prompt_remap = {}
+        if config is not None:
+            config = self._read_config(config)
+            remapping = config['remap']
+            prompt_remap = config['prompts']
+            for key in remapping.keys():
+                self.remapping[int(key)] = remapping[key]
+            for key in prompt_remap.keys():
+                self.prompt_remap[int(key)] = prompt_remap[key]
+        label_map = pandas.read_csv(label_path, sep='\t')
+        ids = label_map['id'].values
+        texts = label_map['raw_category'].values.tolist()
+        indices, prompts = [], []
+        mapping = np.zeros(ids.max() + 1, np.uint16)
+        for i, (num, text) in enumerate(zip(ids, texts)):
+            indices.append(i)
+            if i in self.remapping:
+                print(f"Remapping {i} to {self.remapping[i]}")
+                mapping[num] = self.remapping[i]
+            else:
+                mapping[num] = i
+            if i in self.prompt_remap:
+                print(f"Using {self.prompt_remap[i]} for {text}")
+                prompts.append(self.prompt_remap[i])
+            else:
+                prompts.append(text)
+        self.mapping = mapping
 
-    return mapping
+        self.label_map = pandas.DataFrame({
+            'id': indices,
+            'prompt': prompts,
+            'scannet_id': ids.tolist()
+        })
+        self.classes_in_scene = set()
+
+    def _read_config(self, path):
+        with open(path, 'rt') as f:
+            return json.load(f)
+
+    def write(self, out):
+        label_map_out = os.path.join(out, 'label_map.csv')
+        self.label_map.to_csv(label_map_out, index=False)
+
+    def map_semantics(self, semantic_frame):
+        return self.mapping[semantic_frame]
+
+    def register_frame(self, frame):
+        for i in np.unique(frame):
+            self.classes_in_scene.add(int(i))
+
+    def label_ids(self):
+        return self.label_map['id'].values
 
 
 def write_intrinsics(out, sensor_reader):
@@ -58,11 +100,11 @@ def write_intrinsics(out, sensor_reader):
     np.savetxt(intrinsics_path, intrinsics)
 
 
-def write_metadata(out, label_ids, classes_in_scene):
+def write_metadata(out, label_helper):
     metadata_path = os.path.join(out, "metadata.json")
     metadata = {
-        "n_classes": int(label_ids.max()),
-        'classes': list(sorted(classes_in_scene))
+        "n_classes": int(label_helper.label_ids().max()),
+        'classes': list(sorted(label_helper.classes_in_scene))
     }
     with open(metadata_path, 'w') as f:
         f.write(json.dumps(metadata, indent=2))
@@ -148,7 +190,8 @@ def main():
 
     os.makedirs(flags.out, exist_ok=True)
 
-    label_ids = process_label_map(flags.label_map, flags.out)
+    label_helper = LabelHelper(flags.label_map, flags.config)
+    label_helper.write(flags.out)
 
     scenes = os.listdir(flags.scannet_scan_dir)
 
@@ -171,7 +214,6 @@ def main():
         semantic_files = sorted(semantic_files,
                                 key=lambda x: int(x.split('.')[0]))
 
-        classes_in_scene = set()
         with SensReader(sensor_file) as reader:
 
             scene_out = os.path.join(flags.out, scene)
@@ -196,12 +238,11 @@ def main():
                     os.path.join(semantic_dir_in, semantic_file), -1)
                 # 0 is for void class for which an annotation has not been defined.
                 # Add 1 as offset.
-                out_semantic = label_ids[semantic_frame] + 1
-                for i in np.unique(out_semantic):
-                    classes_in_scene.add(int(i))
-                cv2.imwrite(semantic_path, out_semantic)
+                out_semantic = label_helper.map_semantics(semantic_frame)
+                label_helper.register_frame(out_semantic)
+                cv2.imwrite(semantic_path, out_semantic + 1)
 
-        write_metadata(scene_out, label_ids, classes_in_scene)
+        write_metadata(scene_out, label_helper)
 
 
 if __name__ == "__main__":
