@@ -7,6 +7,8 @@ from tqdm import tqdm
 from autolabel.constants import COLORS
 from autolabel.utils.feature_utils import get_feature_extractor
 from rich.progress import track
+from matplotlib import pyplot as plt
+import matplotlib.patches as mpatches
 
 
 def compute_iou(p_semantic, gt_semantic, class_index):
@@ -89,6 +91,17 @@ class Evaluator:
             Image.fromarray(image).save(save_path)
 
 
+def make_legend(axis, semantic_frame, label_map):
+    classes = np.unique(semantic_frame)
+    colors = [COLORS[class_index % COLORS.shape[0]] for class_index in classes]
+    patches = [
+        mpatches.Patch(color=color / 255., label=label_map['prompt'][i][:10])
+        for color, i in zip(colors, classes)
+    ]
+    # put those patched as legend-handles into the legend
+    axis.legend(handles=patches)
+
+
 class OpenVocabEvaluator(Evaluator):
 
     def __init__(self,
@@ -138,29 +151,27 @@ class OpenVocabEvaluator(Evaluator):
                     iou['total'] = total_iou
 
                     if self.debug:
-                        from matplotlib import pyplot as plt
-                        import ipdb
-                        ipdb.set_trace()
 
                         axis = plt.subplot2grid((1, 2), loc=(0, 0))
-                        p_sem_vis = COLORS[p_semantic.cpu().numpy() %
-                                           COLORS.shape[0]]
+                        p_sem = p_semantic.cpu().numpy()
+                        p_sem_vis = COLORS[p_sem % COLORS.shape[0]]
                         rgb = (batch['pixels'] * 255).astype(np.uint8)
                         axis.imshow(rgb)
                         axis.imshow(p_sem_vis, alpha=0.5)
                         axis.set_title(f"IoU: {total_iou:.2f}")
+                        make_legend(axis, p_sem, self.label_map)
+
                         axis = plt.subplot2grid((1, 2), loc=(0, 1))
-                        axis.imshow(COLORS[gt_semantic.cpu().numpy() %
-                                           COLORS.shape[0]])
+
+                        gt_sem = gt_semantic.cpu().numpy()
+                        axis.imshow(COLORS[gt_sem % COLORS.shape[0]])
+                        make_legend(axis, gt_sem, self.label_map)
                         plt.tight_layout()
                         plt.show()
 
                     for i, prompt in zip(self.label_map['id'].values,
                                          self.label_map['prompt'].values):
                         gt_mask = gt_semantic == i
-                        if gt_mask.sum() == 0:
-                            # Skip classes that are not present in the frame.
-                            continue
                         p_mask = p_semantic == i
                         intersection = torch.bitwise_and(p_mask,
                                                          gt_mask).sum().item()
@@ -202,7 +213,7 @@ class OpenVocabEvaluator(Evaluator):
         return self.label_id_map[similarities]
 
     def _read_gt_semantic(self, path, camera):
-        semantic = cv2.imread(path, -1)
-        return torch.tensor(
-            (cv2.resize(semantic, camera.size,
-                        cv2.INTER_NEAREST)).astype(np.int64)).to(self.device)
+        semantic = np.array(
+            Image.open(path).resize(camera.size, Image.NEAREST)).astype(
+                np.int64) - 1
+        return torch.tensor(semantic).to(self.device)
