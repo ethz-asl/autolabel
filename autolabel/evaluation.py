@@ -147,8 +147,7 @@ class OpenVocabEvaluator(Evaluator):
                         gt_semantic, dataset.camera)
                     intersection = (p_semantic == gt_semantic).sum().item()
                     union = gt_semantic.numel()
-                    total_iou = float(intersection) / float(union)
-                    iou['total'] = total_iou
+                    iou['total'] = (intersection, union)
 
                     if self.debug:
 
@@ -158,6 +157,8 @@ class OpenVocabEvaluator(Evaluator):
                         rgb = (batch['pixels'] * 255).astype(np.uint8)
                         axis.imshow(rgb)
                         axis.imshow(p_sem_vis, alpha=0.5)
+
+                        total_iou = float(intersection) / float(union)
                         axis.set_title(f"IoU: {total_iou:.2f}")
                         make_legend(axis, p_sem, self.label_map)
 
@@ -179,7 +180,7 @@ class OpenVocabEvaluator(Evaluator):
                         if union == 0:
                             class_iou = None
                         else:
-                            class_iou = float(intersection) / float(union)
+                            class_iou = (intersection, union)
                         iou[prompt] = class_iou
                     ious.append(iou)
         out = {}
@@ -190,7 +191,9 @@ class OpenVocabEvaluator(Evaluator):
             if len(values) == 0:
                 out[key] = None
             else:
-                out[key] = np.mean(values)
+                intersection = sum([value[0] for value in values])
+                union = sum([value[1] for value in values])
+                out[key] = intersection / union
         return out
 
     def _predict_semantic(self, batch):
