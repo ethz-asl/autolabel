@@ -37,9 +37,9 @@
   },
   "prompts": {
     "1": "chair; stool; office chair; armchair",
-    "4": "door; doorframe; sliding door; door panel; wooden door; glass door; open door; closed door",
+    "4": "door; sliding door; doorframe",
     "7": "table; desk; coffee table; nightstand; dining table; side table",
-    "15": "cabinet; kitchen cabinet; file cabinet; open cabinet; cabinet door; bathroom cabinet",
+    "15": "cabinet; kitchen cabinet; file cabinet; cabinet door; bathroom cabinet",
     "21": "sink; bathroom sink; kitchen sink"
   }
 }
