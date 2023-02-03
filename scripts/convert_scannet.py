@@ -9,7 +9,9 @@ from argparse import RawTextHelpFormatter
 import os, struct
 import cv2
 import numpy as np
+import trimesh
 from scipy.spatial.transform import Rotation
+import open3d as o3d
 
 
 def read_args():
@@ -54,7 +56,9 @@ class LabelHelper:
         texts = label_map['raw_category'].values.tolist()
         indices, prompts = [], []
         mapping = np.zeros(ids.max() + 1, np.uint16)
+        self.label_to_scannet_id = {}
         for i, (num, text) in enumerate(zip(ids, texts)):
+            self.label_to_scannet_id[text] = num
             indices.append(i)
             if i in self.remapping:
                 print(f"Remapping {i} to {self.remapping[i]}")
@@ -93,6 +97,10 @@ class LabelHelper:
     def label_ids(self):
         return self.label_map['id'].values
 
+    def label_to_id(self, label_name):
+        scannet_id = self.label_to_scannet_id[label_name]
+        return self.mapping[scannet_id]
+
 
 def write_intrinsics(out, sensor_reader):
     intrinsics = sensor_reader.intrinsic_color
@@ -108,6 +116,62 @@ def write_metadata(out, label_helper):
     }
     with open(metadata_path, 'w') as f:
         f.write(json.dumps(metadata, indent=2))
+
+
+def read_aggregation(filename):
+    """From https://github.com/ScanNet/ScanNet"""
+    assert os.path.isfile(filename)
+    object_id_to_segs = {}
+    label_to_segs = {}
+    with open(filename) as f:
+        data = json.load(f)
+        num_objects = len(data['segGroups'])
+        for i in range(num_objects):
+            object_id = data['segGroups'][i][
+                'objectId'] + 1  # instance ids should be 1-indexed
+            label = data['segGroups'][i]['label']
+            segs = data['segGroups'][i]['segments']
+            object_id_to_segs[object_id] = segs
+            if label in label_to_segs:
+                label_to_segs[label].extend(segs)
+            else:
+                label_to_segs[label] = segs
+    return object_id_to_segs, label_to_segs
+
+
+def read_segmentation(filename):
+    """From https://github.com/ScanNet/ScanNet"""
+    assert os.path.isfile(filename)
+    seg_to_verts = {}
+    with open(filename) as f:
+        data = json.load(f)
+        num_verts = len(data['segIndices'])
+        for i in range(num_verts):
+            seg_id = data['segIndices'][i]
+            if seg_id in seg_to_verts:
+                seg_to_verts[seg_id].append(i)
+            else:
+                seg_to_verts[seg_id] = [i]
+    return seg_to_verts, num_verts
+
+
+def copy_3d_semantics(scene_in, scene, scene_out, label_helper):
+    mesh_path = os.path.join(scene_in, f"{scene}_vh_clean_2.ply")
+    aggregation = os.path.join(scene_in, f"{scene}.aggregation.json")
+    segments = os.path.join(scene_in, f"{scene}_vh_clean_2.0.010000.segs.json")
+    mesh = trimesh.load(mesh_path)
+    label_ids = np.zeros((mesh.vertices.shape[0],), dtype=np.uint16)
+    object_id_to_seg, label_to_segs = read_aggregation(aggregation)
+    seg_to_vertex, num_vertices = read_segmentation(segments)
+    for label, segs in label_to_segs.items():
+        label_id = label_helper.label_to_id(label)
+        for seg in segs:
+            verts = seg_to_vertex[seg]
+            label_ids[verts] = label_id
+    out_mesh = os.path.join(scene_out, 'mesh.ply')
+    mesh.export(out_mesh)
+    out_mesh_semantics = os.path.join(scene_out, 'mesh_labels.npy')
+    np.save(out_mesh_semantics, label_ids)
 
 
 class RGBDFrame():
@@ -209,6 +273,9 @@ def main():
         os.makedirs(depth_dir, exist_ok=True)
         os.makedirs(pose_dir, exist_ok=True)
         os.makedirs(semantic_dir, exist_ok=True)
+
+        copy_3d_semantics(os.path.join(flags.scannet_scan_dir, scene), scene,
+                          os.path.join(flags.out, scene), label_helper)
 
         semantic_files = os.listdir(semantic_dir_in)
         semantic_files = sorted(semantic_files,
