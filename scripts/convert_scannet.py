@@ -1,5 +1,6 @@
 description = """
 """
+import subprocess
 import argparse
 import json
 import pandas
@@ -167,7 +168,12 @@ def copy_3d_semantics(scene_in, scene, scene_out, label_helper):
         label_id = label_helper.label_to_id(label)
         for seg in segs:
             verts = seg_to_vertex[seg]
-            label_ids[verts] = label_id
+            try:
+                label_ids[verts] = label_id
+            except IndexError:
+                print(f"Index error for {scene} vertex {verts} and seg: {seg}")
+                continue
+
     out_mesh = os.path.join(scene_out, 'mesh.ply')
     mesh.export(out_mesh)
     out_mesh_semantics = os.path.join(scene_out, 'mesh_labels.npy')
@@ -260,10 +266,15 @@ def main():
     scenes = os.listdir(flags.scannet_scan_dir)
 
     for scene in scenes:
+        scene_dir_in = os.path.join(flags.scannet_scan_dir, scene)
         sensor_file = os.path.join(flags.scannet_scan_dir, scene,
                                    f"{scene}.sens")
         semantic_dir_in = os.path.join(flags.scannet_scan_dir, scene,
                                        "label-filt")
+        if not os.path.exists(semantic_dir_in):
+            label_filt_zip = os.path.join(flags.scannet_scan_dir, scene,
+                                          f"{scene}_2d-label-filt.zip")
+            subprocess.call(['unzip', label_filt_zip, '-d', scene_dir_in])
 
         rgb_dir = os.path.join(flags.out, scene, "rgb")
         depth_dir = os.path.join(flags.out, scene, "depth")

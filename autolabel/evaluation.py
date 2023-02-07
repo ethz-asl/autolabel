@@ -2,10 +2,13 @@ import torch
 import numpy as np
 import os
 import cv2
+import open3d as o3d
 from PIL import Image
 from tqdm import tqdm
 from autolabel.constants import COLORS
 from autolabel.utils.feature_utils import get_feature_extractor
+from autolabel.dataset import CV_TO_OPENGL
+from autolabel import utils
 from rich.progress import track
 from matplotlib import pyplot as plt
 import matplotlib.patches as mpatches
@@ -130,6 +133,12 @@ class OpenVocabEvaluator(Evaluator):
         return extractor.encode_text(self.label_map['prompt'].values)
 
     def eval(self, dataset, visualize=False):
+        raise NotImplementedError()
+
+
+class OpenVocabEvaluator2D(OpenVocabEvaluator):
+
+    def eval(self, dataset, visualize=False):
         ious = []
         gt_semantic = dataset.scene.gt_semantic()
         with torch.inference_mode():
@@ -220,3 +229,78 @@ class OpenVocabEvaluator(Evaluator):
             Image.open(path).resize(camera.size, Image.NEAREST)).astype(
                 np.int64) - 1
         return torch.tensor(semantic).to(self.device)
+
+
+class OpenVocabEvaluator3D(OpenVocabEvaluator):
+
+    def eval(self, dataset, visualize=False):
+        point_cloud, gt_semantic = self._read_gt_pointcloud(dataset)
+        iou = {}
+        with torch.inference_mode():
+            with torch.cuda.amp.autocast(enabled=True):
+                self.model.eval()
+                p_semantic = self._predict_semantic(point_cloud)
+                intersection = (p_semantic == gt_semantic).sum().item()
+                union = gt_semantic.numel()
+                iou['total'] = intersection / union
+
+                if self.debug:
+
+                    pc_vis = point_cloud.cpu().numpy()
+                    pc_vis = o3d.utility.Vector3dVector(pc_vis)
+                    pc_vis = o3d.geometry.PointCloud(pc_vis)
+
+                    p_sem = p_semantic.cpu().numpy()
+                    colors = COLORS[p_sem % COLORS.shape[0]] / 255.
+                    pc_vis.colors = o3d.utility.Vector3dVector(colors)
+
+                    o3d.visualization.draw_geometries([pc_vis])
+
+                    gt_sem = gt_semantic.cpu().numpy()
+                    gt_colors = COLORS[gt_sem % COLORS.shape[0]] / 255.
+                    pc_vis.colors = o3d.utility.Vector3dVector(gt_colors)
+                    o3d.visualization.draw_geometries([pc_vis])
+
+                # for i, prompt in zip(self.label_map['id'].values,
+                #                      self.label_map['prompt'].values):
+                #     gt_mask = gt_semantic == i
+                #     p_mask = p_semantic == i
+                #     intersection = torch.bitwise_and(p_mask,
+                #                                      gt_mask).sum().item()
+                #     union = torch.bitwise_or(p_mask, gt_mask).sum().item()
+                #     if union == 0:
+                #         class_iou = None
+                #     else:
+                #         class_iou = (intersection, union)
+                #     iou[prompt] = class_iou
+        return iou
+
+    def _predict_semantic(self, points):
+        density = self.model.density(points)
+        _, features = self.model.semantic(density['geo_feat'], density['sigma'])
+        features = features / torch.norm(features, dim=-1, keepdim=True)
+        text_features = self.text_features
+        N, D = features.shape
+        similarities = torch.zeros((N, text_features.shape[0]),
+                                   dtype=text_features.dtype,
+                                   device=self.device)
+        for i in range(text_features.shape[0]):
+            similarities[:, i] = (features * text_features[i][None]).sum(dim=-1)
+        similarities = similarities.argmax(dim=-1)
+        return self.label_id_map[similarities]
+
+    def _read_gt_pointcloud(self, dataset):
+        scene_path = dataset.scene.path
+        mesh_path = os.path.join(scene_path, 'mesh.ply')
+        gt_semantic_path = os.path.join(scene_path, 'mesh_labels.npy')
+        semantic = np.load(gt_semantic_path)
+        mesh = o3d.io.read_triangle_mesh(mesh_path)
+        points = np.asarray(mesh.vertices)
+        fixed = np.zeros_like(points)
+        fixed[:, 0] = points[:, 1]
+        fixed[:, 1] = points[:, 2]
+        fixed[:, 2] = points[:, 0]
+        points = torch.tensor(fixed, dtype=torch.float32, device=self.device)
+        semantics = torch.tensor(semantic.astype(int),
+                                 dtype=torch.long).to(self.device)
+        return points, semantics

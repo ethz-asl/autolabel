@@ -3,7 +3,7 @@ import os
 import numpy as np
 import json
 import pandas
-from autolabel.evaluation import OpenVocabEvaluator
+from autolabel.evaluation import OpenVocabEvaluator2D, OpenVocabEvaluator3D
 from autolabel.dataset import SceneDataset, LenDataset
 from autolabel import utils, model_utils
 
@@ -25,6 +25,12 @@ def read_args():
         type=int,
         default=1,
         help="Only evaluate every Nth frame to save time or for debugging.")
+    parser.add_argument(
+        '--pc',
+        action='store_true',
+        help=
+        "Evaluate point cloud segmentation accuracy instead of 2D segmentation maps."
+    )
     parser.add_argument('--debug', action='store_true')
     return parser.parse_args()
 
@@ -102,13 +108,24 @@ def main(flags):
         model_utils.load_checkpoint(model, checkpoint_dir)
         model = model.eval()
 
-        evaluator = OpenVocabEvaluator(model,
-                                       label_map,
-                                       model_params=params,
-                                       name=scene_name,
-                                       checkpoint=flags.feature_checkpoint,
-                                       debug=flags.debug,
-                                       stride=flags.stride)
+        if flags.pc:
+            evaluator = OpenVocabEvaluator3D(
+                model,
+                label_map,
+                model_params=params,
+                name=scene_name,
+                checkpoint=flags.feature_checkpoint,
+                stride=flags.stride,
+                debug=flags.debug)
+        else:
+            evaluator = OpenVocabEvaluator2D(
+                model,
+                label_map,
+                model_params=params,
+                name=scene_name,
+                checkpoint=flags.feature_checkpoint,
+                debug=flags.debug,
+                stride=flags.stride)
         result = evaluator.eval(dataset, flags.vis)
 
         results.append(result)
