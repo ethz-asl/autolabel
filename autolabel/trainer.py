@@ -33,7 +33,7 @@ class SimpleTrainer(Trainer):
                                            dataloader._data.intrinsics)
 
         for i in range(0, epochs):
-            self.train_one_epoch(dataloader)
+            self.train_iterations(dataloader, 1000)
             self.epoch += 1
 
         if self.use_tensorboardX and self.local_rank == 0:
