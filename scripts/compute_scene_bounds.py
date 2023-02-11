@@ -44,25 +44,28 @@ class BBoxComputer:
         pc_W = (T_WC[:3, :3].__matmul__(pc_C[:, :, None]))[:, :, 0] + T_WC[:3,
                                                                            3]
 
+        c_W = T_WC[:3, 3]
         self.min_bounds = np.minimum(self.min_bounds, pc_W.min(axis=0))
         self.max_bounds = np.maximum(self.max_bounds, pc_W.max(axis=0))
+        self.min_bounds = np.minimum(self.min_bounds, c_W)
+        self.max_bounds = np.maximum(self.max_bounds, c_W)
         self.pc += o3d.geometry.PointCloud(
             o3d.utility.Vector3dVector(pc_W)).uniform_down_sample(50)
 
     def get_bounds(self):
-        filtered, _ = self.pc.remove_statistical_outlier(nb_neighbors=20,
-                                                         std_ratio=2.0)
-        o3d_aabb = o3d.geometry.PointCloud(
-            filtered).get_axis_aligned_bounding_box()
         aabb = np.zeros((2, 3))
-        aabb[0, :] = o3d_aabb.get_min_bound()
-        aabb[1, :] = o3d_aabb.get_max_bound()
-        aabb[0, :] = aabb[0, :] - 0.1 * (aabb[1, :] - aabb[0, :])
-        aabb[1, :] = aabb[1, :] + 0.1 * (aabb[1, :] - aabb[0, :])
+        aabb[0, :] = self.min_bounds
+        aabb[1, :] = self.max_bounds
+        the_range = aabb[1, :] - aabb[0, :]
+        aabb[0, :] = aabb[0, :] - 0.25 * the_range
+        aabb[1, :] = aabb[1, :] + 0.25 * the_range
         return aabb
 
 
 def to_pointcloud(color, depth, T_CW, camera_matrix, image_size):
+    if depth.shape[:2] != color.shape[:2]:
+        depth = cv2.resize(depth, (color.shape[1], color.shape[0]),
+                           cv2.INTER_NEAREST)
     depth = o3d.geometry.Image(depth)
     color = o3d.geometry.Image(color)
     rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
@@ -73,9 +76,8 @@ def to_pointcloud(color, depth, T_CW, camera_matrix, image_size):
                                                 camera_matrix[1, 1],
                                                 camera_matrix[0, 2],
                                                 camera_matrix[1, 2])
-    return o3d.geometry.PointCloud.create_from_rgbd_image(rgbd,
-                                                          pinhole,
-                                                          extrinsic=T_CW)
+    return o3d.geometry.PointCloud.create_from_rgbd_image(
+        rgbd, pinhole, extrinsic=T_CW).voxel_down_sample(voxel_size=0.05)
 
 
 def main():
@@ -88,7 +90,7 @@ def main():
     geometry = []
 
     data = [i for i in zip(scene.depth_paths(), scene.rgb_paths(), scene.poses)]
-    for depth_path, rgb_path, T_CW in data[::10]:
+    for depth_path, rgb_path, T_CW in data:
         depth = cv2.imread(depth_path, -1)
         bbox_computer.add_frame(T_CW, depth)
 
@@ -96,6 +98,9 @@ def main():
             axis = o3d.geometry.TriangleMesh.create_coordinate_frame().scale(
                 0.1, np.zeros(3))
             geometry.append(axis.transform(np.linalg.inv(T_CW)))
+            T_WC = np.linalg.inv(T_CW)
+            p_W = T_WC[:3, 3]
+            bounds = bbox_computer.get_bounds()
 
             rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
             pc = to_pointcloud(rgb, depth, T_CW, scene.camera.camera_matrix,
