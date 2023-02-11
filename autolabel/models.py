@@ -51,6 +51,10 @@ class HGFreqEncoder(nn.Module):
     def forward(self, x, bound):
         freq = self.encoder(x)
         normalized = (x + bound) / (2.0 * bound)
+        # Sometimes samples might leak a bit outside the bounds.
+        # This produces NaNs in the grid encoding, so we simply clip those points
+        # assuming there aren't many of these.
+        normalized = torch.clip(normalized, 0.0, 1.0)
         grid = self.grid_encoding(normalized)
         return torch.cat([freq, grid], dim=-1)
 
