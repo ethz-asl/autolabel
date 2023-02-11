@@ -116,7 +116,7 @@ class ALNetwork(NeRFRenderer):
             network_config={
                 "otype": "CutlassMLP",
                 "activation": "ReLU",
-                "output_activation": "ReLU",
+                "output_activation": "None",
                 "n_neurons": self.hidden_dim_semantic,
                 "n_hidden_layers": 2
             })
@@ -162,7 +162,8 @@ class ALNetwork(NeRFRenderer):
         rgb = torch.sigmoid(h)
 
         features = self.semantic_features(geo_feat)
-        semantic = self.semantic_out(torch.cat([features, geo_feat], dim=-1))
+        semantic = self.semantic_out(
+            torch.cat([F.relu(features), geo_feat], dim=-1))
         semantic = F.softmax(semantic, dim=-1)
 
         return sigma, rgb, semantic
@@ -244,7 +245,7 @@ class ALNetwork(NeRFRenderer):
         sigma: [N, 1] density outputs
         returns: [N, C] semantic head outputs
         """
-        sem_features = self.semantic_features(geo_features)
+        sem_features = F.relu(self.semantic_features(geo_features))
         features = torch.cat([sem_features, geo_features], dim=1)
         return self.semantic_out(features), sem_features
 
