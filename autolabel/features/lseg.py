@@ -57,10 +57,7 @@ class LSegFE:
         # Return half size features
         H_out, W_out = H // 2, W // 2
         out = []
-        x = [
-            F.interpolate(image[None].half().cuda(), [H_out, W_out])
-            for image in x
-        ]
+        x = [F.interpolate(image[None], [H_out, W_out]) for image in x]
         for image in x:
             out.append(self.evaluator.compute_features(image))
 
