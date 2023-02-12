@@ -1,6 +1,7 @@
 description = """
 """
 import subprocess
+import math
 import argparse
 import json
 import pandas
@@ -24,10 +25,11 @@ def read_args():
         required=True,
         help="Path to label map .tsv file with semantic label names and ids.")
     parser.add_argument('--out', required=True)
-    parser.add_argument('--stride',
-                        '-s',
+    parser.add_argument('--max-frames',
                         type=int,
-                        default=1,
+                        default=750,
+                        help="Maximum number of frames to keep.")
+    parser.add_argument('--stride', type=int, default=5,
                         help="Use only every s-th frame.")
     parser.add_argument(
         '--config',
@@ -292,16 +294,20 @@ def main():
         semantic_files = sorted(semantic_files,
                                 key=lambda x: int(x.split('.')[0]))
 
+        scene_out = os.path.join(flags.out, scene)
+        max_frames = 750
         with SensReader(sensor_file) as reader:
 
-            scene_out = os.path.join(flags.out, scene)
             write_intrinsics(scene_out, reader)
-
+            stride = max(math.ceil(reader.num_frames / max_frames), flags.stride)
             for i, ((T_WC, rgb, depth), semantic_file) in enumerate(
                     zip(reader.read(), semantic_files)):
                 if i % flags.stride != 0:
                     continue
                 print("Processing frame %d" % i, end='\r')
+                if np.isnan(T_WC).any() or np.isinf(T_WC).any():
+                    print("Skipping frame %d" % i, "because of nan or inf.")
+                    continue
                 T_CW = np.linalg.inv(T_WC)
                 number = f"{i:06}"
                 rgb_path = os.path.join(rgb_dir, f"{number}.jpg")
@@ -321,6 +327,7 @@ def main():
                 cv2.imwrite(semantic_path, out_semantic + 1)
 
         write_metadata(scene_out, label_helper)
+        subprocess.call(['python', 'scripts/compute_scene_bounds.py', os.path.join(flags.out, scene)])
 
 
 if __name__ == "__main__":
