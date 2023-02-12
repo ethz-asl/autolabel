@@ -51,7 +51,6 @@ class LenDataset(torch.utils.data.IterableDataset):
     def __len__(self):
         return self.length
 
-
 class LazyImageLoader:
 
     def __init__(self, images, size, interpolation=cv2.INTER_CUBIC):
@@ -196,7 +195,7 @@ class BaseDataset(torch.utils.data.IterableDataset):
             'semantic': semantics,
         }
         if self.features is not None:
-            features = np.zeros((batch_size, self.features.shape[-1]),
+            features = np.zeros((batch_size, self.feature_dim),
                                 dtype=np.float32)
             out['features'] = features
 
@@ -232,7 +231,7 @@ class BaseDataset(torch.utils.data.IterableDataset):
 
                 index = xy_features[:, 1] * self.feature_width + xy_features[:,
                                                                              0]
-                features[start:end] = self.features[image_index, index, :]
+                features[start:end] = self.features[image_index][index, :]
 
         return out
 
@@ -436,6 +435,7 @@ class SceneDataset(BaseDataset):
             self.features = features.reshape(N, H * W, C)
             self.feature_width = W
             self.feature_height = H
+            self.feature_dim = C
         scale_factor = np.array(
             [W / self.camera.size[0], H / self.camera.size[1]])
         self._scale_to_feature_xy = lambda xy: (xy * scale_factor).astype(int)
@@ -452,30 +452,38 @@ class DynamicDataset(BaseDataset):
         self.depths = []
         self.features = []
         self.semantics = []
+        self.n_examples = 0
 
     def add_frame(self, T_CW, rgb, depth, features):
         if len(self.features) == 0:
             self._init_features(features)
 
-        assert depth.dtype == np.float32
+        assert depth.dtype == np.uint16
         assert len(features.shape) == 3
         assert features.shape[0] == self.feature_height
+
+        if self.pixel_indices is None:
+            self.resolution = rgb.shape[0] * rgb.shape[1]
+            self.pixel_indices = np.arange(self.resolution)
 
         T_WC = self._convert_pose(T_CW)
         self.poses.append(T_WC)
         self.rotations.append(np.ascontiguousarray(T_WC[:3, :3]))
         self.origins.append(T_WC[:3, 3])
-        self.images.append(rgb)
-        self.depths.append(depth)
-        self.features.append(features.reshape(-1, self.feature_width))
-        self.semantics.append(np.zeros(self.camera.size[::-1], dtype=np.uint16))
+        self.images.append(rgb.reshape(-1, 3))
+        self.depths.append(depth.reshape(-1))
+        self.features.append(features.reshape(self.feature_height * self.feature_width, features.shape[2]))
+        self.semantics.append(np.zeros(self.resolution, dtype=np.uint16))
+        self.n_examples = len(self.images)
+
+    def __len__(self):
+        return self.n_examples
 
     def _init_features(self, features):
-        H, W, _ = features.shape
-
-        self.features = features
-        self.feature_width = features.shape[1]
-        self.feature_height = features.shape[0]
+        H, W, D = features.shape
+        self.feature_height = H
+        self.feature_width = W
+        self.feature_dim = D
         scale_factor = np.array([
             self.feature_width / self.camera.size[0],
             self.feature_height / self.camera.size[1]
