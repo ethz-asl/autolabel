@@ -34,7 +34,7 @@ def read_args():
     parser.add_argument(
         '--config',
         type=str,
-        default=None,
+        default='configs/scannet_mapping.json',
         help=
         "Path to remapping configuration, if any. See configs/scannet_mapping.json for an example."
     )
@@ -82,11 +82,14 @@ class LabelHelper:
         })
         self.classes_in_scene = set()
 
+    def reset(self):
+        self.classes_in_scene = set()
+
     def _read_config(self, path):
         with open(path, 'rt') as f:
             return json.load(f)
 
-    def write(self, out):
+    def write_labelmap(self, out):
         label_map_out = os.path.join(out, 'label_map.csv')
         self.label_map.to_csv(label_map_out, index=False)
 
@@ -263,11 +266,13 @@ def main():
     os.makedirs(flags.out, exist_ok=True)
 
     label_helper = LabelHelper(flags.label_map, flags.config)
-    label_helper.write(flags.out)
+    label_helper.write_labelmap(flags.out)
 
     scenes = os.listdir(flags.scannet_scan_dir)
 
     for scene in scenes:
+        # Reset classes in scene.
+        label_helper.reset()
         scene_dir_in = os.path.join(flags.scannet_scan_dir, scene)
         sensor_file = os.path.join(flags.scannet_scan_dir, scene,
                                    f"{scene}.sens")
