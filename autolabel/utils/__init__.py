@@ -38,6 +38,9 @@ class Camera:
     def from_path(self, path, size):
         return Camera(np.loadtxt(path), size)
 
+    def write(self, path):
+        np.savetxt(path, self.camera_matrix)
+
 
 class Scene:
 
