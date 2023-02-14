@@ -167,7 +167,7 @@ class BaseDataset(torch.utils.data.IterableDataset):
             self.camera.camera_matrix[0, 0], self.camera.camera_matrix[1, 1],
             self.camera.camera_matrix[0, 2], self.camera.camera_matrix[1, 2]
         ])
-        self.sample_chunk_size = 32
+        self.sample_chunk_size = 512
         self.index_sampler = IndexSampler()
 
     def __iter__(self):
@@ -441,6 +441,9 @@ class SceneDataset(BaseDataset):
         self._scale_to_feature_xy = lambda xy: (xy * scale_factor).astype(int)
 
 
+import threading
+import time
+from collections import deque
 class DynamicDataset(BaseDataset):
 
     def __init__(self, batch_size, camera):
@@ -453,12 +456,36 @@ class DynamicDataset(BaseDataset):
         self.features = []
         self.semantics = []
         self.n_examples = 0
+        self.prefetch_buffer = deque()
+        self.prefetch_buffer_size = 25
+        self.stopped = False
+        self._prefetch_thread = threading.Thread(target=self._prefetch)
+        self._prefetch_thread.start()
+
+    def stop(self):
+        self.stopped = True
+        self._prefetch_thread.join()
+
+    def _prefetch(self):
+        while not self.stopped:
+            if len(self.features) == 0 or len(self.prefetch_buffer) >= self.prefetch_buffer_size:
+                time.sleep(0.1)
+                continue
+            self.prefetch_buffer.append(self._next_train())
+
+    def __iter__(self):
+        while True:
+            if len(self.prefetch_buffer) == 0:
+                time.sleep(0.1)
+            else:
+                yield self.prefetch_buffer.popleft()
 
     def add_frame(self, T_CW, rgb, depth, features):
         if len(self.features) == 0:
             self._init_features(features)
 
         assert depth.dtype == np.uint16
+        assert rgb.dtype == np.uint8
         assert len(features.shape) == 3
         assert features.shape[0] == self.feature_height
 
@@ -470,7 +497,7 @@ class DynamicDataset(BaseDataset):
         self.poses.append(T_WC)
         self.rotations.append(np.ascontiguousarray(T_WC[:3, :3]))
         self.origins.append(T_WC[:3, 3])
-        self.images.append(rgb.reshape(-1, 3))
+        self.images.append(rgb.reshape(-1, 3) / 255.)
         self.depths.append(depth.reshape(-1))
         self.features.append(features.reshape(self.feature_height * self.feature_width, features.shape[2]))
         self.semantics.append(np.zeros(self.resolution, dtype=np.uint16))

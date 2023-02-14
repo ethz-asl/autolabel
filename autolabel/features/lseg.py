@@ -59,7 +59,7 @@ class LSegFE:
         out = []
         x = [F.interpolate(image[None], [H_out, W_out]) for image in x]
         for image in x:
-            out.append(self.evaluator.compute_features(image))
+            out.append(self.evaluator.compute_features(image.half()))
 
         out = torch.cat(out, dim=0)
 
