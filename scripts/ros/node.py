@@ -286,7 +286,7 @@ class AutolabelNode:
             del self.depth_messages[seq_num]
             del self.pose_messages[seq_num]
 
-    def image_tuple(self, num, depth_msg, image_msg, pose_msg):
+    def image_tuple(self, num, image_msg, depth_msg, pose_msg):
         T_CW = to_pose(pose_msg)
         if np.abs(depth_msg.header.stamp.to_sec() -
                   image_msg.header.stamp.to_sec()) > self.sync_threshold:
