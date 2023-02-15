@@ -40,16 +40,16 @@ def read_args():
 
 
 def to_pose(pose_stamped):
-    T_CW = np.eye(4)
-    T_CW[:3, :3] = Rotation.from_quat([
+    T_WC = np.eye(4)
+    T_WC[:3, :3] = Rotation.from_quat([
         pose_stamped.pose.orientation.x, pose_stamped.pose.orientation.y,
         pose_stamped.pose.orientation.z, pose_stamped.pose.orientation.w
     ]).as_matrix()
-    T_CW[:3, 3] = [
+    T_WC[:3, 3] = [
         pose_stamped.pose.position.x, pose_stamped.pose.position.y,
         pose_stamped.pose.position.z
     ]
-    return T_CW.astype(np.float32)
+    return np.linalg.inv(T_WC)
 
 
 class Frame:
