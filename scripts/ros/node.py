@@ -61,6 +61,31 @@ class Frame:
         self.depth = depth
         self.features = features
 
+class MessageBuffer:
+    def __init__(self, cutoff):
+        self.timestamps = []
+        self.messages = []
+        self.cutoff = cutoff
+
+    def add_message(self, msg):
+        ts = msg.header.stamp.to_nsec()
+        self.messages.append(msg)
+        self.timestamps.append(ts)
+
+    def closest(self, stamp):
+        if len(self.timestamps) == 0:
+            return None
+        ts = stamp.to_nsec()
+        distances = np.abs(np.array(self.timestamps) - ts)
+        index = np.argmin(distances)
+        if distances[index] > self.cutoff:
+            return None
+        else:
+            return self.messages[index]
+
+    def remove(self, msg):
+        self.messages = [msg for msg in self.messages if msg != msg]
+        self.timestamps = [msg.stamp.to_nsec() for msg in self.messages]
 
 class Bridge:
 
@@ -236,7 +261,7 @@ class AutolabelNode:
 
     def __init__(self, flags):
         self.bridge = Bridge(flags.features, flags.checkpoint)
-        self.sync_threshold = 1. / 30.
+        self.sync_threshold = 1. / 60.
         self.training_loop = TrainingLoop(self.bridge)
         self.image_sub = rospy.Subscriber('/slam/rgb',
                                           Image,
@@ -252,49 +277,51 @@ class AutolabelNode:
                                              PoseStamped,
                                              self.keyframe_callback,
                                              queue_size=20)
-        self.depth_messages = {}
-        self.rgb_messages = {}
-        self.pose_messages = {}
+        self.rgb_buffer = MessageBuffer(self.sync_threshold)
+        self.depth_buffer = MessageBuffer(self.sync_threshold)
+        self.pose_buffer = MessageBuffer(self.sync_threshold)
         self.debug_log = flags.log
         if self.debug_log is not None:
             os.makedirs(os.path.join(self.debug_log, 'rgb'), exist_ok=True)
             os.makedirs(os.path.join(self.debug_log, 'depth'), exist_ok=True)
             os.makedirs(os.path.join(self.debug_log, 'pose'), exist_ok=True)
-            self.training_loop.camera.save(
+            self.training_loop.camera.write(
                 os.path.join(self.debug_log, 'intrinsics.txt'))
 
     def image_callback(self, msg):
-        self.rgb_messages[msg.header.seq] = msg
-        self._check_tuple(msg.header.seq)
+        self.rgb_buffer.add_message(msg)
+        self._check_tuple(msg.header.stamp)
 
     def depth_callback(self, msg):
-        self.depth_messages[msg.header.seq] = msg
-        self._check_tuple(msg.header.seq)
+        self.depth_buffer.add_message(msg)
+        self._check_tuple(msg.header.stamp)
 
     def keyframe_callback(self, msg):
-        self.pose_messages[msg.header.seq] = msg
-        self._check_tuple(msg.header.seq)
+        self.pose_buffer.add_message(msg)
+        self._check_tuple(msg.header.stamp)
 
-    def _check_tuple(self, seq_num):
-        if (seq_num in self.depth_messages and seq_num in self.rgb_messages and
-                seq_num in self.pose_messages):
-            rgb = self.rgb_messages[seq_num]
-            depth = self.depth_messages[seq_num]
-            pose = self.pose_messages[seq_num]
-            self.image_tuple(seq_num, rgb, depth, pose)
-            del self.rgb_messages[seq_num]
-            del self.depth_messages[seq_num]
-            del self.pose_messages[seq_num]
+    def _check_tuple(self, stamp):
+        rgb_message = self.rgb_buffer.closest(stamp)
+        if rgb_message is None:
+            return
+        depth_message = self.depth_buffer.closest(stamp)
+        if depth_message is None:
+            return
+        pose_message = self.pose_buffer.closest(stamp)
+        if pose_message is None:
+            return
+        print("Found tuple")
+        self.image_tuple(rgb_message, depth_message, pose_message)
 
-    def image_tuple(self, num, image_msg, depth_msg, pose_msg):
-        T_CW = to_pose(pose_msg)
+    def image_tuple(self, image_msg, depth_msg, pose_msg):
         if np.abs(depth_msg.header.stamp.to_sec() -
                   image_msg.header.stamp.to_sec()) > self.sync_threshold:
             print("WARNING depth and rgb might not be synchronized")
+        T_CW = to_pose(pose_msg)
         image = self.bridge.color_to_array(image_msg)
         depth = self.bridge.depth_to_array(depth_msg)
         features = self.bridge.features(image)
-        frame = Frame(num, T_CW, image, depth, features)
+        frame = Frame(image_msg.header.seq, T_CW, image, depth, features)
         self.training_loop.add_frame(frame)
         if self.debug_log is not None:
             self._debug_log_frame(frame)
@@ -302,7 +329,7 @@ class AutolabelNode:
     def _debug_log_frame(self, frame):
         filename = f"{frame.num:06d}"
         cv2.imwrite(os.path.join(self.debug_log, 'rgb', f"{filename}.jpg"),
-                    cv2.cvtColor(frame.image, cv2.COLOR_RGB2RGB))
+                    cv2.cvtColor(frame.image, cv2.COLOR_RGB2BGR))
         cv2.imwrite(os.path.join(self.debug_log, 'depth', f"{filename}.png"),
                     frame.depth)
         np.savetxt(os.path.join(self.debug_log, 'pose', f"{filename}.txt"),
