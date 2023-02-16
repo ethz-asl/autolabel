@@ -1,16 +1,23 @@
 import sys
 from PyQt6 import QtWidgets
 from PyQt6 import QtCore
+import rospy
+from std_msgs.msg import String
 
 class ListView(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QtWidgets.QVBoxLayout()
         self.setLayout(self.layout)
+        self.items = []
 
     def add_item(self, item):
         self.layout.addWidget(QtWidgets.QLabel(item))
+        self.items.append(item)
         self.update()
+
+    def encode_items(self):
+        return "|".join(self.items)
 
 
 class SegmentingApplication(QtWidgets.QMainWindow):
@@ -28,6 +35,12 @@ class SegmentingApplication(QtWidgets.QMainWindow):
         main_widget = QtWidgets.QWidget()
         main_widget.setLayout(layout)
         self.setCentralWidget(main_widget)
+        self._init_ros()
+        self.list_view.add_item("background; other")
+        self._publish_classes()
+
+    def _init_ros(self):
+        self.pub = rospy.Publisher("/autolabel/segmentation_classes", String, queue_size=1)
 
     def _create_input_line(self):
         layout = QtWidgets.QHBoxLayout()
@@ -47,10 +60,15 @@ class SegmentingApplication(QtWidgets.QMainWindow):
     def _add_class(self):
         self.list_view.add_item(self.line_edit.text())
         self.line_edit.clear()
+        self._publish_classes()
+
+    def _publish_classes(self):
+        self.pub.publish(String(self.list_view.encode_items()))
 
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    rospy.init_node('segmentation_prompt_gui')
 
     window = SegmentingApplication()
     window.show()
