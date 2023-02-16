@@ -4,6 +4,7 @@ import time
 from argparse import Namespace
 import rospy
 from sensor_msgs.msg import Image
+from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
@@ -18,6 +19,7 @@ from autolabel.trainer import SimpleTrainer
 from autolabel import model_utils
 from autolabel.dataset import DynamicDataset
 from autolabel.dataset import _compute_direction
+from autolabel.constants import COLORS
 from scipy.spatial.transform import Rotation
 import threading
 from std_srvs.srv import Empty
@@ -94,6 +96,10 @@ class Bridge:
         self.tf_listener = tf.TransformListener()
         self.bridge = CvBridge()
         self.feature_extractor = get_feature_extractor(features, checkpoint)
+        self.set_prompts("background; other")
+
+    def set_prompts(self, prompts):
+        self.prompt_features = self.feature_extractor.encode_text(prompts)
 
     def depth_to_array(self, depth_msg):
         return self.bridge.imgmsg_to_cv2(depth_msg, 'mono16')
@@ -125,6 +131,25 @@ class Bridge:
         msg = self.bridge.cv2_to_imgmsg(array, encoding='rgb8')
         msg.header.stamp = rospy.Time.now()
         return msg
+
+    def features_to_message(self, feature_map):
+        class_map = self._feature_similarity(feature_map).cpu().numpy()
+        seg_map = COLORS[class_map % len(COLORS)]
+        msg = self.bridge.cv2_to_imgmsg(seg_map, encoding='rgb8')
+        msg.header.stamp = rospy.Time.now()
+        return msg
+
+    def _feature_similarity(self, feature_map):
+        """
+        feature_map: H x W x D feature map
+        returns: H x W integer map denoting closest class
+        """
+        assert len(feature_map.shape) == 3
+        feature_map = F.normalize(feature_map, dim=2)
+        H, W, _ = feature_map.shape
+        # similarities = torch.zeros((H, W, C), dtype=feature_map.dtype)
+        similarities = (feature_map[:, :, None] * self.prompt_features).sum(dim=3)
+        return similarities.argmax(dim=2)
 
 
 class TrainingLoop:
@@ -161,7 +186,7 @@ class TrainingLoop:
                         feature_dim=512,
                         depth_weight=0.025,
                         semantic_weight=0.0,
-                        feature_weight=0.0)
+                        feature_weight=0.5)
         self.model = model_utils.create_model(min_bounds, max_bounds, 2, opt)
         self.trainer = SimpleTrainer(
             'ngp',
@@ -245,11 +270,10 @@ class TrainingLoop:
         image = (image * 255.).cpu().numpy().astype(np.uint8)
         msg = self.bridge.image_to_message(image)
         self.image_pub.publish(msg)
-        print("image:", image.shape)
-        print("features:", features.shape)
+        feature_msg = self.bridge.features_to_message(features)
+        self.feature_pub.publish(feature_msg)
 
     def add_frame(self, frame):
-        print("received frame")
         self.dataset.add_frame(frame.T_CW, frame.image, frame.depth,
                                frame.features)
         self.initialized = True
@@ -282,6 +306,7 @@ class AutolabelNode:
                                              PoseStamped,
                                              self.keyframe_callback,
                                              queue_size=20)
+        self.prompt_sub = rospy.Subscriber('/autolabel/segmentation_classes', String, self.prompt_callback)
         self.rgb_buffer = MessageBuffer(self.sync_threshold)
         self.depth_buffer = MessageBuffer(self.sync_threshold)
         self.pose_buffer = MessageBuffer(self.sync_threshold)
@@ -306,6 +331,11 @@ class AutolabelNode:
         self.reading = not self.reading
         print(f"Accepting new images: {self.reading}")
         return []
+
+    def prompt_callback(self, msg):
+        text = str(msg.data)
+        prompts = text.split("|")
+        self.bridge.set_prompts(prompts)
 
     def image_callback(self, msg):
         if self.reading:
@@ -332,7 +362,6 @@ class AutolabelNode:
         pose_message = self.pose_buffer.closest(stamp)
         if pose_message is None:
             return
-        print("Found tuple")
         self.image_tuple(rgb_message, depth_message, pose_message)
 
     def image_tuple(self, image_msg, depth_msg, pose_msg):
