@@ -2,7 +2,10 @@ import sys
 from PyQt6 import QtWidgets
 from PyQt6 import QtCore
 import rospy
+from autolabel.constants import COLORS
 from std_msgs.msg import String
+
+DEFAULT_CLASS = "background; other"
 
 class ListView(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -12,12 +15,23 @@ class ListView(QtWidgets.QWidget):
         self.items = []
 
     def add_item(self, item):
-        self.layout.addWidget(QtWidgets.QLabel(item))
+        index = len(self.items)
+        color = COLORS[index % len(COLORS)]
         self.items.append(item)
+        label = QtWidgets.QLabel(item)
+        label.setMargin(20)
+        label.setStyleSheet(f"background-color: rgb({color[0]}, {color[1]}, {color[2]});")
+        self.layout.addWidget(label)
         self.update()
 
     def encode_items(self):
         return "|".join(self.items)
+
+    def reset(self):
+        self.items = []
+        for i in reversed(range(self.layout.count())):
+            self.layout.itemAt(i).widget().setParent(None)
+        self.add_item(DEFAULT_CLASS)
 
 
 class SegmentingApplication(QtWidgets.QMainWindow):
@@ -27,6 +41,8 @@ class SegmentingApplication(QtWidgets.QMainWindow):
         self.setWindowTitle("Segmentation Classes")
         self.input_button = QtWidgets.QPushButton("Add")
         self.input_button.clicked.connect(self._add_class)
+        self.reset_button = QtWidgets.QPushButton("Reset")
+        self.reset_button.clicked.connect(self._reset_classes)
         self.list_view = ListView()
         input_line = self._create_input_line()
         layout = QtWidgets.QVBoxLayout()
@@ -36,7 +52,7 @@ class SegmentingApplication(QtWidgets.QMainWindow):
         main_widget.setLayout(layout)
         self.setCentralWidget(main_widget)
         self._init_ros()
-        self.list_view.add_item("background; other")
+        self.list_view.add_item(DEFAULT_CLASS)
         self._publish_classes()
 
     def _init_ros(self):
@@ -49,6 +65,7 @@ class SegmentingApplication(QtWidgets.QMainWindow):
         self.line_edit.returnPressed.connect(self._add_class)
         layout.addWidget(self.line_edit)
         layout.addWidget(self.input_button)
+        layout.addWidget(self.reset_button)
         widget = QtWidgets.QWidget()
         widget.setLayout(layout)
         return widget
@@ -60,6 +77,10 @@ class SegmentingApplication(QtWidgets.QMainWindow):
     def _add_class(self):
         self.list_view.add_item(self.line_edit.text())
         self.line_edit.clear()
+        self._publish_classes()
+
+    def _reset_classes(self):
+        self.list_view.reset()
         self._publish_classes()
 
     def _publish_classes(self):
