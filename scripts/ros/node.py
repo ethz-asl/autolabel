@@ -20,6 +20,7 @@ from autolabel.dataset import DynamicDataset
 from autolabel.dataset import _compute_direction
 from scipy.spatial.transform import Rotation
 import threading
+from std_srvs.srv import Empty
 
 
 def read_args():
@@ -132,9 +133,9 @@ class TrainingLoop:
         self.bridge = bridge
         min_bounds = np.array([-2.5, -2.5, -2.5])
         max_bounds = np.array([2.5, 2.5, 2.5])
-        lr = 1e-4
-        # scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(optimizer,
-        #         [10, 25, 50], gamma=0.1)
+        lr = 1e-2
+        scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(optimizer,
+                [1, 10, 50, 75], gamma=0.1)
         scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(
             optimizer, lr)
         optimizer = lambda model: torch.optim.Adam([
@@ -158,7 +159,7 @@ class TrainingLoop:
                         rgb_weight=1.0,
                         geometric_features=15,
                         feature_dim=512,
-                        depth_weight=0.1,
+                        depth_weight=0.025,
                         semantic_weight=0.0,
                         feature_weight=0.0)
         self.model = model_utils.create_model(min_bounds, max_bounds, 2, opt)
@@ -176,7 +177,7 @@ class TrainingLoop:
         self.camera = Camera(
             np.array([[513.104, 0.0, 321.532], [0.0, 513.104, 184.124],
                       [0., 0., 1.]]), (640, 360))
-        self.dataset = DynamicDataset(4096, self.camera)
+        self.dataset = DynamicDataset(2048, self.camera)
         self.loader = torch.utils.data.DataLoader(self.dataset,
                                                   batch_size=None,
                                                   num_workers=0)
@@ -201,15 +202,18 @@ class TrainingLoop:
             if self.done:
                 print("Closing training loop")
                 return 0
-            if self.initialized and self.training and len(self.dataset) > 5:
-                print(f"Fitting with {len(self.dataset)} images")
-                self.model.train()
-                self.trainer.train_iterations(self.loader, 100)
+            if self.initialized:
+                if self.training and len(self.dataset) > 5:
+                    print(f"Fitting with {len(self.dataset)} images")
+                    self.model.train()
+                    self.trainer.train_iterations(self.loader, 100)
+
                 if self.odometry_pose is not None:
                     self.model.eval()
                     self.render_frame()
             else:
                 time.sleep(0.05)
+
 
     def render_frame(self):
         T_CW = self.odometry_pose
@@ -260,6 +264,7 @@ class TrainingLoop:
 class AutolabelNode:
 
     def __init__(self, flags):
+        self.reading = True
         self.bridge = Bridge(flags.features, flags.checkpoint)
         self.sync_threshold = 1. / 60.
         self.training_loop = TrainingLoop(self.bridge)
@@ -280,6 +285,10 @@ class AutolabelNode:
         self.rgb_buffer = MessageBuffer(self.sync_threshold)
         self.depth_buffer = MessageBuffer(self.sync_threshold)
         self.pose_buffer = MessageBuffer(self.sync_threshold)
+
+        self.toggle_service = rospy.Service('/autolabel/train', Empty, self.toggle_training)
+        self.read_service = rospy.Service('/autolabel/pause', Empty, self.toggle_reading)
+
         self.debug_log = flags.log
         if self.debug_log is not None:
             os.makedirs(os.path.join(self.debug_log, 'rgb'), exist_ok=True)
@@ -288,17 +297,30 @@ class AutolabelNode:
             self.training_loop.camera.write(
                 os.path.join(self.debug_log, 'intrinsics.txt'))
 
+    def toggle_training(self, req):
+        self.training_loop.training = not self.training_loop.training
+        print("toggled training")
+        return []
+
+    def toggle_reading(self, req):
+        self.reading = not self.reading
+        print(f"Accepting new images: {self.reading}")
+        return []
+
     def image_callback(self, msg):
-        self.rgb_buffer.add_message(msg)
-        self._check_tuple(msg.header.stamp)
+        if self.reading:
+            self.rgb_buffer.add_message(msg)
+            self._check_tuple(msg.header.stamp)
 
     def depth_callback(self, msg):
-        self.depth_buffer.add_message(msg)
-        self._check_tuple(msg.header.stamp)
+        if self.reading:
+            self.depth_buffer.add_message(msg)
+            self._check_tuple(msg.header.stamp)
 
     def keyframe_callback(self, msg):
-        self.pose_buffer.add_message(msg)
-        self._check_tuple(msg.header.stamp)
+        if self.reading:
+            self.pose_buffer.add_message(msg)
+            self._check_tuple(msg.header.stamp)
 
     def _check_tuple(self, stamp):
         rgb_message = self.rgb_buffer.closest(stamp)
