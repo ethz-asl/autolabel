@@ -20,6 +20,7 @@ def read_args():
                                      formatter_class=RawTextHelpFormatter)
     parser.add_argument('scene')
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--stride', type=int, default=1)
     return parser.parse_args()
 
 
@@ -90,7 +91,7 @@ def main():
     geometry = []
 
     data = [i for i in zip(scene.depth_paths(), scene.rgb_paths(), scene.poses)]
-    for depth_path, rgb_path, T_CW in data:
+    for depth_path, rgb_path, T_CW in data[::flags.stride]:
         depth = cv2.imread(depth_path, -1)
         bbox_computer.add_frame(T_CW, depth)
 
