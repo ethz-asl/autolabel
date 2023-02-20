@@ -43,9 +43,9 @@ def get_nerf_dir(scene, flags):
         return os.path.join(flags.workspace, scene_name)
 
 
-def gather_models(flags):
+def gather_models(flags, scene_dirs):
     models = set()
-    for scene in flags.scenes:
+    for scene in scene_dirs:
         nerf_dir = get_nerf_dir(scene, flags)
         if not os.path.exists(nerf_dir):
             continue
@@ -66,17 +66,35 @@ def write_results(out, results):
 
 
 def main(flags):
-    model = gather_models(flags)[-1]
-    print(f"Using model {model}")
+    if len(flags.scenes) == 1 and not os.path.exists(
+            os.path.join(flags.scenes[0], 'rgb')):
+        # We are dealing with a directory full of scenes and not a list of scenes
+        scene_dir = flags.scenes[0]
+        scene_dirs = [
+            os.path.join(scene_dir, scene)
+            for scene in os.listdir(scene_dir)
+            if os.path.exists(os.path.join(scene_dir, scene, 'rgb'))
+        ]
+    else:
+        scene_dirs = flags.scenes
 
     original_labels = read_label_map(flags.label_map)
     n_classes = len(original_labels)
 
-    scene_names = [os.path.basename(os.path.normpath(p)) for p in flags.scenes]
-    scenes = [(s, n) for s, n in zip(flags.scenes, scene_names)]
+    scene_names = [os.path.basename(os.path.normpath(p)) for p in scene_dirs]
+    scenes = [(s, n) for s, n in zip(scene_dirs, scene_names)]
     scenes = sorted(scenes, key=lambda x: x[1])
     results = []
+    evaluator = None
     for scene_index, (scene, scene_name) in enumerate(scenes):
+        model = gather_models(flags, [scene])
+        if len(model) == 0:
+            print(f"Skipping scene {scene_name} because no models were found.")
+            continue
+        else:
+            model = model[0]
+        print(f"Using model {model}")
+
         print(f"Evaluating scene {scene_name}")
 
         nerf_dir = get_nerf_dir(scene, flags)
@@ -108,35 +126,33 @@ def main(flags):
         model_utils.load_checkpoint(model, checkpoint_dir)
         model = model.eval()
 
-        if flags.pc:
-            evaluator = OpenVocabEvaluator3D(
-                model,
-                label_map,
-                model_params=params,
-                name=scene_name,
-                checkpoint=flags.feature_checkpoint,
-                stride=flags.stride,
-                debug=flags.debug)
-        else:
-            evaluator = OpenVocabEvaluator2D(
-                model,
-                label_map,
-                model_params=params,
-                name=scene_name,
-                checkpoint=flags.feature_checkpoint,
-                debug=flags.debug,
-                stride=flags.stride)
+        if evaluator is None:
+            if flags.pc:
+                evaluator = OpenVocabEvaluator3D(
+                    features=params.features,
+                    name=scene_name,
+                    checkpoint=flags.feature_checkpoint,
+                    stride=flags.stride,
+                    debug=flags.debug)
+            else:
+                evaluator = OpenVocabEvaluator2D(
+                    features=params.features,
+                    name=scene_name,
+                    checkpoint=flags.feature_checkpoint,
+                    debug=flags.debug,
+                    stride=flags.stride)
+        assert evaluator.features == params.features
+        evaluator.reset(model, label_map)
         result = evaluator.eval(dataset, flags.vis)
 
         results.append(result)
+        del model
 
     from rich.table import Table
     from rich.console import Console
     table = Table()
-    table.add_column('Scene')
-
-    for scene_name in scene_names:
-        table.add_column(scene_name)
+    table.add_column('Class')
+    table.add_column('mIoU')
 
     def iou_to_string(iou):
         if iou is None:
@@ -144,21 +160,22 @@ def main(flags):
         else:
             return f"{iou:.2f}"
 
-    for prompt in label_map['prompt'].values:
-        scene_results = []
-        for i in range(len(scene_names)):
-            if prompt not in results[i]:
-                scene_results.append("N/A")
-                continue
-            result = iou_to_string(results[i][prompt])
-            scene_results.append(result)
-        table.add_row(prompt, *scene_results)
+    reduced = {}
+    for result in results:
+        for key, value in result.items():
+            if key not in reduced:
+                reduced[key] = []
+            if value is None:
+                value = 0.0
+            reduced[key].append(value)
+    for key, values in reduced.items():
+        if key == 'total':
+            continue
+        mIoU = np.mean(values)
+        table.add_row(key, iou_to_string(mIoU))
 
-    total_results = []
-    for i in range(len(scene_names)):
-        scene_total = iou_to_string(results[i]['total'])
-        total_results.append(scene_total)
-    table.add_row('Mean', *total_results)
+    scene_total = iou_to_string(np.mean([r['total'] for r in results]))
+    table.add_row('Total', scene_total)
 
     console = Console()
     console.print(table)

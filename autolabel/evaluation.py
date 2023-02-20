@@ -108,29 +108,31 @@ def make_legend(axis, semantic_frame, label_map):
 class OpenVocabEvaluator(Evaluator):
 
     def __init__(self,
-                 model,
-                 label_map,
-                 model_params,
                  device='cuda:0',
                  name="model",
+                 features=None,
                  checkpoint=None,
                  debug=False,
                  stride=1):
-        self.model = model
-        self.label_map = label_map
-        self.model_params = model_params
-        self.feature_checkpoint = checkpoint
         self.device = device
         self.name = name
         self.debug = debug
         self.stride = stride
-        self.label_id_map = torch.tensor(self.label_map['id'].values).to(device)
+        self.model = None
+        self.label_id_map = None
+        self.label_map = None
+        self.features = features
+        self.extractor = get_feature_extractor(features, checkpoint)
+
+    def reset(self, model, label_map):
+        self.model = model
+        self.label_map = label_map
+        self.label_id_map = torch.tensor(self.label_map['id'].values).to(
+            self.device)
         self.text_features = self._infer_text_features()
 
     def _infer_text_features(self):
-        extractor = get_feature_extractor(self.model_params.features,
-                                          self.feature_checkpoint)
-        return extractor.encode_text(self.label_map['prompt'].values)
+        return self.extractor.encode_text(self.label_map['prompt'].values)
 
     def eval(self, dataset, visualize=False):
         raise NotImplementedError()
@@ -169,12 +171,14 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
 
                         total_iou = float(intersection) / float(union)
                         axis.set_title(f"IoU: {total_iou:.2f}")
+                        axis.axis('off')
                         make_legend(axis, p_sem, self.label_map)
 
                         axis = plt.subplot2grid((1, 2), loc=(0, 1))
 
                         gt_sem = gt_semantic.cpu().numpy()
                         axis.imshow(COLORS[gt_sem % COLORS.shape[0]])
+                        axis.axis('off')
                         make_legend(axis, gt_sem, self.label_map)
                         plt.tight_layout()
                         plt.show()
