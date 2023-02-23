@@ -40,6 +40,8 @@ def read_args():
         help=
         "Save incoming images to this directory in the autolabel format for debugging."
     )
+    parser.add_argument('--bound', '-b', type=float, default=2.5,
+            help="The size of bounding volume of the scene. Range will be from -bound to bound in x, y and z.")
     return parser.parse_args()
 
 
@@ -129,10 +131,10 @@ class Bridge:
 
 class TrainingLoop:
 
-    def __init__(self, bridge):
+    def __init__(self, bridge, bound):
         self.bridge = bridge
-        min_bounds = np.array([-2.5, -2.5, -2.5])
-        max_bounds = np.array([2.5, 2.5, 2.5])
+        min_bounds = np.array([-bound, -bound, -bound])
+        max_bounds = np.array([bound, bound, bound])
         lr = 1e-2
         scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(optimizer,
                 [1, 10, 50, 75], gamma=0.1)
@@ -266,7 +268,7 @@ class AutolabelNode:
         self.reading = True
         self.bridge = Bridge(flags.features, flags.checkpoint)
         self.sync_threshold = 1. / 60.
-        self.training_loop = TrainingLoop(self.bridge)
+        self.training_loop = TrainingLoop(self.bridge, flags.bound)
         self.image_sub = rospy.Subscriber('/slam/rgb',
                                           Image,
                                           self.image_callback,
