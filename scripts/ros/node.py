@@ -20,6 +20,7 @@ from autolabel import model_utils
 from autolabel.dataset import DynamicDataset
 from autolabel.dataset import _compute_direction
 from autolabel.constants import COLORS
+from autolabel.utils import ros_utils
 from scipy.spatial.transform import Rotation
 import threading
 from std_srvs.srv import Empty
@@ -63,32 +64,6 @@ class Frame:
         self.image = image
         self.depth = depth
         self.features = features
-
-class MessageBuffer:
-    def __init__(self, cutoff):
-        self.timestamps = []
-        self.messages = []
-        self.cutoff = cutoff
-
-    def add_message(self, msg):
-        ts = msg.header.stamp.to_nsec()
-        self.messages.append(msg)
-        self.timestamps.append(ts)
-
-    def closest(self, stamp):
-        if len(self.timestamps) == 0:
-            return None
-        ts = stamp.to_nsec()
-        distances = np.abs(np.array(self.timestamps) - ts)
-        index = np.argmin(distances)
-        if distances[index] > self.cutoff:
-            return None
-        else:
-            return self.messages[index]
-
-    def remove(self, msg):
-        self.messages = [msg for msg in self.messages if msg != msg]
-        self.timestamps = [msg.stamp.to_nsec() for msg in self.messages]
 
 class Bridge:
 
@@ -307,9 +282,9 @@ class AutolabelNode:
                                              self.keyframe_callback,
                                              queue_size=20)
         self.prompt_sub = rospy.Subscriber('/autolabel/segmentation_classes', String, self.prompt_callback)
-        self.rgb_buffer = MessageBuffer(self.sync_threshold)
-        self.depth_buffer = MessageBuffer(self.sync_threshold)
-        self.pose_buffer = MessageBuffer(self.sync_threshold)
+        self.rgb_buffer = ros_utils.MessageBuffer(self.sync_threshold)
+        self.depth_buffer = ros_utils.MessageBuffer(self.sync_threshold)
+        self.pose_buffer = ros_utils.MessageBuffer(self.sync_threshold)
 
         self.toggle_service = rospy.Service('/autolabel/train', Empty, self.toggle_training)
         self.read_service = rospy.Service('/autolabel/pause', Empty, self.toggle_reading)
