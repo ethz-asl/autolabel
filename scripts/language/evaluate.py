@@ -32,6 +32,7 @@ def read_args():
         "Evaluate point cloud segmentation accuracy instead of 2D segmentation maps."
     )
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--vis-path', type=str, default=None)
     return parser.parse_args()
 
 
@@ -135,12 +136,17 @@ def main(flags):
                     stride=flags.stride,
                     debug=flags.debug)
             else:
+                if flags.vis_path is not None:
+                    vis_path = os.path.join(flags.vis_path, scene_name)
+                else:
+                    vis_path = None
                 evaluator = OpenVocabEvaluator2D(
                     features=params.features,
                     name=scene_name,
                     checkpoint=flags.feature_checkpoint,
                     debug=flags.debug,
-                    stride=flags.stride)
+                    stride=flags.stride,
+                    save_figures=vis_path)
         assert evaluator.features == params.features
         evaluator.reset(model, label_map)
         result = evaluator.eval(dataset, flags.vis)

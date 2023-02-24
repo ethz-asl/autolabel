@@ -105,7 +105,7 @@ def make_legend(axis, semantic_frame, label_map):
     axis.legend(handles=patches)
 
 
-class OpenVocabEvaluator(Evaluator):
+class OpenVocabEvaluator:
 
     def __init__(self,
                  device='cuda:0',
@@ -113,7 +113,8 @@ class OpenVocabEvaluator(Evaluator):
                  features=None,
                  checkpoint=None,
                  debug=False,
-                 stride=1):
+                 stride=1,
+                 save_figures=None):
         self.device = device
         self.name = name
         self.debug = debug
@@ -123,6 +124,7 @@ class OpenVocabEvaluator(Evaluator):
         self.label_map = None
         self.features = features
         self.extractor = get_feature_extractor(features, checkpoint)
+        self.save_figures = save_figures
 
     def reset(self, model, label_map):
         self.model = model
@@ -159,6 +161,9 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
                     intersection = (p_semantic == gt_semantic).sum().item()
                     union = gt_semantic.numel()
                     iou['total'] = (intersection, union)
+
+                    if self.save_figures is not None:
+                        self._save_figure(p_semantic, gt_semantic, batch, i)
 
                     if self.debug:
 
@@ -208,6 +213,25 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
                 union = sum([value[1] for value in values])
                 out[key] = intersection / union
         return out
+
+    def _save_figure(self, p_semantic, gt_semantic, batch, example_index):
+        rgb_path = os.path.join(self.save_figures, 'rgb')
+        p_path = os.path.join(self.save_figures, 'p_semantic')
+        gt_path = os.path.join(self.save_figures, 'gt_semantic')
+        os.makedirs(rgb_path, exist_ok=True)
+        os.makedirs(p_path, exist_ok=True)
+        os.makedirs(gt_path, exist_ok=True)
+        rgb = (batch['pixels'] * 255).astype(np.uint8)
+        Image.fromarray(rgb).save(
+            os.path.join(rgb_path, f"{example_index:06}.png"))
+        p_sem = p_semantic.cpu().numpy()
+        p_sem_vis = COLORS[p_sem % COLORS.shape[0]]
+        Image.fromarray(p_sem_vis).save(
+            os.path.join(p_path, f"{example_index:06}.png"))
+        gt_sem = gt_semantic.cpu().numpy()
+        gt_sem_vis = COLORS[gt_sem % COLORS.shape[0]]
+        Image.fromarray(gt_sem_vis).save(
+            os.path.join(gt_path, f"{example_index:06}.png"))
 
     def _predict_semantic(self, batch):
         rays_o = torch.tensor(batch['rays_o']).to(self.device)
