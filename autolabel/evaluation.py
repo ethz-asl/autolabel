@@ -265,18 +265,18 @@ class OpenVocabEvaluator3D(OpenVocabEvaluator):
                     pc_vis.colors = o3d.utility.Vector3dVector(gt_colors)
                     o3d.visualization.draw_geometries([pc_vis])
 
-                # for i, prompt in zip(self.label_map['id'].values,
-                #                      self.label_map['prompt'].values):
-                #     gt_mask = gt_semantic == i
-                #     p_mask = p_semantic == i
-                #     intersection = torch.bitwise_and(p_mask,
-                #                                      gt_mask).sum().item()
-                #     union = torch.bitwise_or(p_mask, gt_mask).sum().item()
-                #     if union == 0:
-                #         class_iou = None
-                #     else:
-                #         class_iou = (intersection, union)
-                #     iou[prompt] = class_iou
+                for i, prompt in zip(self.label_map['id'].values,
+                                     self.label_map['prompt'].values):
+                    gt_mask = gt_semantic == i
+                    p_mask = p_semantic == i
+                    intersection = torch.bitwise_and(p_mask,
+                                                     gt_mask).sum().item()
+                    union = torch.bitwise_or(p_mask, gt_mask).sum().item()
+                    if union == 0:
+                        class_iou = None
+                    else:
+                        class_iou = intersection / union
+                    iou[prompt] = class_iou
         return iou
 
     def _predict_semantic(self, points):

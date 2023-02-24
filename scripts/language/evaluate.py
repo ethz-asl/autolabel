@@ -158,7 +158,8 @@ def main(flags):
         if iou is None:
             return "N/A"
         else:
-            return f"{iou:.3}"
+            v = iou * 100
+            return f"{v:.1f}"
 
     reduced = {}
     for result in results:
