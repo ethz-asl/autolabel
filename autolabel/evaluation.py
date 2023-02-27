@@ -94,12 +94,13 @@ class Evaluator:
             Image.fromarray(image).save(save_path)
 
 
-def make_legend(axis, semantic_frame, label_map):
+def make_legend(axis, semantic_frame, label_mapping):
     classes = np.unique(semantic_frame)
     colors = [COLORS[class_index % COLORS.shape[0]] for class_index in classes]
+    prompts = [label_mapping.get(class_id, "unknown") for class_id in classes]
     patches = [
-        mpatches.Patch(color=color / 255., label=label_map['prompt'][i][:10])
-        for color, i in zip(colors, classes)
+        mpatches.Patch(color=color / 255., label=prompt[:10])
+        for color, prompt in zip(colors, prompts)
     ]
     # put those patched as legend-handles into the legend
     axis.legend(handles=patches)
@@ -126,12 +127,21 @@ class OpenVocabEvaluator:
         self.extractor = get_feature_extractor(features, checkpoint)
         self.save_figures = save_figures
 
-    def reset(self, model, label_map):
+    def reset(self, model, label_map, figure_path):
         self.model = model
         self.label_map = label_map
         self.label_id_map = torch.tensor(self.label_map['id'].values).to(
             self.device)
         self.text_features = self._infer_text_features()
+        self.label_mapping = {0: 'void'}
+        for i, prompt in zip(label_map['id'], label_map['prompt']):
+            self.label_mapping[i] = prompt
+        self.save_figures = figure_path
+        if 'evaluated' in self.label_map:
+            self.evaluated_labels = label_map[label_map['evaluated'] ==
+                                              1]['id'].values
+        else:
+            self.evaluated_labels = label_map['id'].values
 
     def _infer_text_features(self):
         return self.extractor.encode_text(self.label_map['prompt'].values)
@@ -155,11 +165,16 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
                         continue
                     iou = {}
                     batch = dataset._get_test(i)
-                    p_semantic = self._predict_semantic(batch)
                     gt_semantic = self._read_gt_semantic(
                         gt_semantic, dataset.camera)
-                    intersection = (p_semantic == gt_semantic).sum().item()
-                    union = gt_semantic.numel()
+                    mask = np.isin(gt_semantic, self.evaluated_labels)
+
+                    union = mask.sum()
+                    if union == 0:
+                        continue
+                    p_semantic = self._predict_semantic(batch).cpu().numpy()
+                    intersection = np.bitwise_and(p_semantic == gt_semantic,
+                                                  mask).sum()
                     iou['total'] = (intersection, union)
 
                     if self.save_figures is not None:
@@ -168,7 +183,7 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
                     if self.debug:
 
                         axis = plt.subplot2grid((1, 2), loc=(0, 0))
-                        p_sem = p_semantic.cpu().numpy()
+                        p_sem = p_semantic.copy()
                         p_sem_vis = COLORS[p_sem % COLORS.shape[0]]
                         rgb = (batch['pixels'] * 255).astype(np.uint8)
                         axis.imshow(rgb)
@@ -177,30 +192,36 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
                         total_iou = float(intersection) / float(union)
                         axis.set_title(f"IoU: {total_iou:.2f}")
                         axis.axis('off')
-                        make_legend(axis, p_sem, self.label_map)
+                        make_legend(axis, p_sem, self.label_mapping)
 
                         axis = plt.subplot2grid((1, 2), loc=(0, 1))
 
-                        gt_sem = gt_semantic.cpu().numpy()
-                        axis.imshow(COLORS[gt_sem % COLORS.shape[0]])
+                        axis.imshow(COLORS[gt_semantic % COLORS.shape[0]])
                         axis.axis('off')
-                        make_legend(axis, gt_sem, self.label_map)
+                        make_legend(axis, gt_semantic, self.label_mapping)
                         plt.tight_layout()
                         plt.show()
 
                     for i, prompt in zip(self.label_map['id'].values,
                                          self.label_map['prompt'].values):
+                        if i not in self.evaluated_labels:
+                            continue
                         gt_mask = gt_semantic == i
+                        if gt_mask.sum() <= 0:
+                            continue
                         p_mask = p_semantic == i
-                        intersection = torch.bitwise_and(p_mask,
-                                                         gt_mask).sum().item()
-                        union = torch.bitwise_or(p_mask, gt_mask).sum().item()
+                        intersection = np.bitwise_and(p_mask, gt_mask).sum()
+                        union = np.bitwise_or(p_mask, gt_mask).sum()
                         if union == 0:
                             class_iou = None
                         else:
                             class_iou = (intersection, union)
                         iou[prompt] = class_iou
                     ious.append(iou)
+
+        if len(ious) == 0:
+            print(f"Scene {self.name} has no labels in the evaluation set")
+            return {}
         out = {}
         for key in ious[0].keys():
             values = [
@@ -224,11 +245,12 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
         rgb = (batch['pixels'] * 255).astype(np.uint8)
         Image.fromarray(rgb).save(
             os.path.join(rgb_path, f"{example_index:06}.png"))
-        p_sem = p_semantic.cpu().numpy()
+        p_semantic[gt_semantic == 0] = 0
+        p_sem = p_semantic.copy()
         p_sem_vis = COLORS[p_sem % COLORS.shape[0]]
         Image.fromarray(p_sem_vis).save(
             os.path.join(p_path, f"{example_index:06}.png"))
-        gt_sem = gt_semantic.cpu().numpy()
+        gt_sem = gt_semantic.copy()
         gt_sem_vis = COLORS[gt_sem % COLORS.shape[0]]
         Image.fromarray(gt_sem_vis).save(
             os.path.join(gt_path, f"{example_index:06}.png"))
@@ -254,9 +276,9 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
 
     def _read_gt_semantic(self, path, camera):
         semantic = np.array(
-            Image.open(path).resize(camera.size, Image.NEAREST)).astype(
-                np.int64) - 1
-        return torch.tensor(semantic).to(self.device)
+            Image.open(path).resize(camera.size,
+                                    Image.NEAREST)).astype(np.int64)
+        return semantic
 
 
 class OpenVocabEvaluator3D(OpenVocabEvaluator):
@@ -267,35 +289,45 @@ class OpenVocabEvaluator3D(OpenVocabEvaluator):
         with torch.inference_mode():
             with torch.cuda.amp.autocast(enabled=True):
                 self.model.eval()
-                p_semantic = self._predict_semantic(point_cloud)
-                intersection = (p_semantic == gt_semantic).sum().item()
-                union = gt_semantic.numel()
+                p_semantic = self._predict_semantic(point_cloud).cpu().numpy()
+                mask = np.isin(gt_semantic, self.evaluated_labels)
+                intersection = np.bitwise_and(p_semantic == gt_semantic,
+                                              mask).sum()
+
+                union = mask.sum()
+                if union == 0:
+                    print(
+                        f"Skipping {self.name} because no labels are in the list of valid labels."
+                    )
+                    return {}
                 iou['total'] = intersection / union
 
                 if self.debug:
-
-                    pc_vis = point_cloud.cpu().numpy()
+                    pc_vis = point_cloud.copy()
                     pc_vis = o3d.utility.Vector3dVector(pc_vis)
                     pc_vis = o3d.geometry.PointCloud(pc_vis)
 
-                    p_sem = p_semantic.cpu().numpy()
+                    p_sem = p_semantic.copy()
                     colors = COLORS[p_sem % COLORS.shape[0]] / 255.
                     pc_vis.colors = o3d.utility.Vector3dVector(colors)
 
                     o3d.visualization.draw_geometries([pc_vis])
 
-                    gt_sem = gt_semantic.cpu().numpy()
+                    gt_sem = gt_semantic
                     gt_colors = COLORS[gt_sem % COLORS.shape[0]] / 255.
                     pc_vis.colors = o3d.utility.Vector3dVector(gt_colors)
                     o3d.visualization.draw_geometries([pc_vis])
 
                 for i, prompt in zip(self.label_map['id'].values,
                                      self.label_map['prompt'].values):
+                    if i not in self.evaluated_labels:
+                        continue
                     gt_mask = gt_semantic == i
+                    if gt_mask.sum() <= 0:
+                        continue
                     p_mask = p_semantic == i
-                    intersection = torch.bitwise_and(p_mask,
-                                                     gt_mask).sum().item()
-                    union = torch.bitwise_or(p_mask, gt_mask).sum().item()
+                    intersection = np.bitwise_and(p_mask, gt_mask).sum()
+                    union = np.bitwise_or(p_mask, gt_mask).sum()
                     if union == 0:
                         class_iou = None
                     else:
@@ -329,6 +361,6 @@ class OpenVocabEvaluator3D(OpenVocabEvaluator):
         fixed[:, 1] = points[:, 2]
         fixed[:, 2] = points[:, 0]
         points = torch.tensor(fixed, dtype=torch.float32, device=self.device)
-        semantics = torch.tensor(semantic.astype(int),
-                                 dtype=torch.long).to(self.device)
+        semantics = semantic.astype(int)
+
         return points, semantics

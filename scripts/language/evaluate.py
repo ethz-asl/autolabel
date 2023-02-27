@@ -33,6 +33,7 @@ def read_args():
     )
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--vis-path', type=str, default=None)
+    parser.add_argument('--only-scene-classes', action='store_true')
     return parser.parse_args()
 
 
@@ -108,15 +109,18 @@ def main(flags):
                                factor=4.0,
                                batch_size=flags.batch_size,
                                lazy=True)
-        classes_in_scene = dataset.scene.metadata.get('classes', None)
-        if classes_in_scene is None:
-            label_map = original_labels
+        if flags.only_scene_classes:
+            classes_in_scene = dataset.scene.metadata.get('classes', None)
+            if classes_in_scene is None:
+                label_map = original_labels
+            else:
+                mask = original_labels['id'].isin(classes_in_scene)
+                label_map = original_labels[mask]
         else:
-            mask = original_labels['id'].isin(classes_in_scene)
-            label_map = original_labels[mask]
+            label_map = original_labels
 
         model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
-                                         dataset.n_classes, params).cuda()
+                                         606, params).cuda()
         model = model.eval()
 
         checkpoint_dir = os.path.join(model_path, 'checkpoints')
@@ -126,6 +130,10 @@ def main(flags):
 
         model_utils.load_checkpoint(model, checkpoint_dir)
         model = model.eval()
+        if flags.vis_path is not None:
+            vis_path = os.path.join(flags.vis_path, scene_name)
+        else:
+            vis_path = None
 
         if evaluator is None:
             if flags.pc:
@@ -136,10 +144,6 @@ def main(flags):
                     stride=flags.stride,
                     debug=flags.debug)
             else:
-                if flags.vis_path is not None:
-                    vis_path = os.path.join(flags.vis_path, scene_name)
-                else:
-                    vis_path = None
                 evaluator = OpenVocabEvaluator2D(
                     features=params.features,
                     name=scene_name,
@@ -148,7 +152,7 @@ def main(flags):
                     stride=flags.stride,
                     save_figures=vis_path)
         assert evaluator.features == params.features
-        evaluator.reset(model, label_map)
+        evaluator.reset(model, label_map, vis_path)
         result = evaluator.eval(dataset, flags.vis)
 
         results.append(result)
@@ -181,7 +185,8 @@ def main(flags):
         mIoU = np.mean(values)
         table.add_row(key, iou_to_string(mIoU))
 
-    scene_total = iou_to_string(np.mean([r['total'] for r in results]))
+    scene_total = iou_to_string(
+        np.mean([r['total'] for r in results if 'total' in r]))
     table.add_row('Total', scene_total)
 
     console = Console()
