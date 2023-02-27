@@ -34,6 +34,9 @@ def read_args():
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--vis-path', type=str, default=None)
     parser.add_argument('--only-scene-classes', action='store_true')
+    parser.add_argument('--random',
+                        action='store_true',
+                        help="Randomize the order of the scenes.")
     return parser.parse_args()
 
 
@@ -85,7 +88,11 @@ def main(flags):
 
     scene_names = [os.path.basename(os.path.normpath(p)) for p in scene_dirs]
     scenes = [(s, n) for s, n in zip(scene_dirs, scene_names)]
-    scenes = sorted(scenes, key=lambda x: x[1])
+    if flags.random:
+        import random
+        random.shuffle(scenes)
+    else:
+        scenes = sorted(scenes, key=lambda x: x[1])
     results = []
     evaluator = None
     for scene_index, (scene, scene_name) in enumerate(scenes):
