@@ -15,6 +15,10 @@ import trimesh
 from scipy.spatial.transform import Rotation
 import open3d as o3d
 
+SCANNET20_IDS = [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39
+]
+
 
 def read_args():
     parser = argparse.ArgumentParser(description=description,
@@ -29,57 +33,53 @@ def read_args():
                         type=int,
                         default=750,
                         help="Maximum number of frames to keep.")
-    parser.add_argument('--stride', type=int, default=5,
+    parser.add_argument('--stride',
+                        type=int,
+                        default=5,
                         help="Use only every s-th frame.")
-    parser.add_argument(
-        '--config',
-        type=str,
-        default='configs/scannet_mapping.json',
-        help=
-        "Path to remapping configuration, if any. See configs/scannet_mapping.json for an example."
-    )
+    parser.add_argument('--nyu40',
+                        action='store_true',
+                        help="Use NYU40 label map.")
+    parser.add_argument('--scannet20',
+                        action='store_true',
+                        help="Use ScanNet20 evaluation label map.")
     return parser.parse_args()
 
 
 class LabelHelper:
 
-    def __init__(self, label_path, config):
+    def __init__(self, label_path, flags):
         self.remapping = {}
         self.prompt_remap = {}
-        if config is not None:
-            config = self._read_config(config)
-            remapping = config['remap']
-            prompt_remap = config['prompts']
-            for key in remapping.keys():
-                self.remapping[int(key)] = remapping[key]
-            for key in prompt_remap.keys():
-                self.prompt_remap[int(key)] = prompt_remap[key]
         label_map = pandas.read_csv(label_path, sep='\t')
-        ids = label_map['id'].values
-        texts = label_map['raw_category'].values.tolist()
-        indices, prompts = [], []
-        mapping = np.zeros(ids.max() + 1, np.uint16)
-        self.label_to_scannet_id = {}
-        for i, (num, text) in enumerate(zip(ids, texts)):
-            self.label_to_scannet_id[text] = num
-            indices.append(i)
-            if i in self.remapping:
-                print(f"Remapping {i} to {self.remapping[i]}")
-                mapping[num] = self.remapping[i]
-            else:
-                mapping[num] = i
-            if i in self.prompt_remap:
-                print(f"Using {self.prompt_remap[i]} for {text}")
-                prompts.append(self.prompt_remap[i])
-            else:
-                prompts.append(text)
+        mapping = np.zeros(label_map['id'].values.max() + 1, np.uint16)
+        if flags.nyu40 or flags.scannet20:
+            ids = np.arange(1, 41)
+            texts = []
+            for i in ids:
+                text = label_map['nyu40class'][label_map['nyu40id'] ==
+                                               i].values[0]
+                texts.append(text)
+            for i, num in zip(label_map['id'].values,
+                              label_map['nyu40id'].values):
+                mapping[i] = num
+        else:
+            texts = label_map['raw_category'].values.tolist()
+            ids = np.arange(1, len(texts) + 1)
+            for i, num in zip(label_map['id'].values, ids):
+                mapping[i] = num
+
+        if flags.scannet20:
+            mapping[np.isin(mapping, SCANNET20_IDS) == False] = 0
+            texts = [text for text, i in zip(texts, ids) if i in SCANNET20_IDS]
+            ids = ids[np.isin(ids, SCANNET20_IDS)]
+
+        self.label_text_to_id = {}
+        for num, text in zip(label_map['id'], label_map['raw_category']):
+            self.label_text_to_id[text] = num
         self.mapping = mapping
 
-        self.label_map = pandas.DataFrame({
-            'id': indices,
-            'prompt': prompts,
-            'scannet_id': ids.tolist()
-        })
+        self.label_map = pandas.DataFrame({'id': ids, 'prompt': texts})
         self.classes_in_scene = set()
 
     def reset(self):
@@ -104,7 +104,7 @@ class LabelHelper:
         return self.label_map['id'].values
 
     def label_to_id(self, label_name):
-        scannet_id = self.label_to_scannet_id[label_name]
+        scannet_id = self.label_text_to_id[label_name]
         return self.mapping[scannet_id]
 
 
@@ -173,11 +173,11 @@ def copy_3d_semantics(scene_in, scene, scene_out, label_helper):
         label_id = label_helper.label_to_id(label)
         for seg in segs:
             verts = seg_to_vertex[seg]
-            try:
-                label_ids[verts] = label_id
-            except IndexError:
-                print(f"Index error for {scene} vertex {verts} and seg: {seg}")
-                continue
+            for vertex in verts:
+                try:
+                    label_ids[vertex] = label_id
+                except IndexError:
+                    print(f"Index error for {scene} vertex {vertex} and seg: {seg}")
 
     out_mesh = os.path.join(scene_out, 'mesh.ply')
     mesh.export(out_mesh)
@@ -265,7 +265,7 @@ def main():
 
     os.makedirs(flags.out, exist_ok=True)
 
-    label_helper = LabelHelper(flags.label_map, flags.config)
+    label_helper = LabelHelper(flags.label_map, flags)
     label_helper.write_labelmap(flags.out)
 
     scenes = os.listdir(flags.scannet_scan_dir)
@@ -304,7 +304,8 @@ def main():
         with SensReader(sensor_file) as reader:
 
             write_intrinsics(scene_out, reader)
-            stride = max(math.ceil(reader.num_frames / max_frames), flags.stride)
+            stride = max(math.ceil(reader.num_frames / max_frames),
+                         flags.stride)
             for i, ((T_WC, rgb, depth), semantic_file) in enumerate(
                     zip(reader.read(), semantic_files)):
                 if i % flags.stride != 0:
@@ -325,14 +326,15 @@ def main():
                 semantic_path = os.path.join(semantic_dir, f"{number}.png")
                 semantic_frame = cv2.imread(
                     os.path.join(semantic_dir_in, semantic_file), -1)
-                # 0 is for void class for which an annotation has not been defined.
-                # Add 1 as offset.
                 out_semantic = label_helper.map_semantics(semantic_frame)
                 label_helper.register_frame(out_semantic)
-                cv2.imwrite(semantic_path, out_semantic + 1)
+                cv2.imwrite(semantic_path, out_semantic)
 
         write_metadata(scene_out, label_helper)
-        subprocess.call(['python', 'scripts/compute_scene_bounds.py', os.path.join(flags.out, scene)])
+        subprocess.call([
+            'python', 'scripts/compute_scene_bounds.py',
+            os.path.join(flags.out, scene)
+        ])
 
 
 if __name__ == "__main__":
