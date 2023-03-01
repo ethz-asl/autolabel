@@ -12,7 +12,7 @@ def read_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scenes', nargs='+')
     parser.add_argument('--batch-size', default=8182, type=int)
-    parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--vis', default=None, type=str)
     parser.add_argument('--workspace', type=str, default=None)
     parser.add_argument('--out',
                         default=None,
@@ -32,11 +32,11 @@ def read_args():
         "Evaluate point cloud segmentation accuracy instead of 2D segmentation maps."
     )
     parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--vis-path', type=str, default=None)
     parser.add_argument('--only-scene-classes', action='store_true')
     parser.add_argument('--random',
                         action='store_true',
                         help="Randomize the order of the scenes.")
+    parser.add_argument('--time', action='store_true')
     return parser.parse_args()
 
 
@@ -93,8 +93,10 @@ def main(flags):
         random.shuffle(scenes)
     else:
         scenes = sorted(scenes, key=lambda x: x[1])
-    results = []
+    ious = []
+    accs = []
     evaluator = None
+
     for scene_index, (scene, scene_name) in enumerate(scenes):
         model = gather_models(flags, [scene])
         if len(model) == 0:
@@ -109,6 +111,7 @@ def main(flags):
         nerf_dir = get_nerf_dir(scene, flags)
         model_path = os.path.join(nerf_dir, model)
         if not os.path.exists(model_path):
+            print(f"Skipping scene {scene_name} because no models were found.")
             continue
         params = model_utils.read_params(model_path)
         dataset = SceneDataset('test',
@@ -128,7 +131,6 @@ def main(flags):
 
         model = model_utils.create_model(dataset.min_bounds, dataset.max_bounds,
                                          606, params).cuda()
-        model = model.eval()
 
         checkpoint_dir = os.path.join(model_path, 'checkpoints')
         if not os.path.exists(checkpoint_dir) or len(
@@ -137,8 +139,8 @@ def main(flags):
 
         model_utils.load_checkpoint(model, checkpoint_dir)
         model = model.eval()
-        if flags.vis_path is not None:
-            vis_path = os.path.join(flags.vis_path, scene_name)
+        if flags.vis is not None:
+            vis_path = os.path.join(flags.vis, scene_name)
         else:
             vis_path = None
 
@@ -149,7 +151,8 @@ def main(flags):
                     name=scene_name,
                     checkpoint=flags.feature_checkpoint,
                     stride=flags.stride,
-                    debug=flags.debug)
+                    debug=flags.debug,
+                    time=flags.time)
             else:
                 evaluator = OpenVocabEvaluator2D(
                     features=params.features,
@@ -160,41 +163,59 @@ def main(flags):
                     save_figures=vis_path)
         assert evaluator.features == params.features
         evaluator.reset(model, label_map, vis_path)
-        result = evaluator.eval(dataset, flags.vis)
+        iou, acc = evaluator.eval(dataset)
 
-        results.append(result)
+        ious.append(iou)
+        accs.append(acc)
+        print_results([iou], [acc])
         del model
+    print_results(ious, accs)
 
+
+def print_results(ious, accs):
     from rich.table import Table
     from rich.console import Console
     table = Table()
     table.add_column('Class')
     table.add_column('mIoU')
+    table.add_column('mAcc')
 
-    def iou_to_string(iou):
+    def percentage_to_string(iou):
         if iou is None:
             return "N/A"
         else:
             v = iou * 100
             return f"{v:.1f}"
 
-    reduced = {}
-    for result in results:
-        for key, value in result.items():
-            if key not in reduced:
-                reduced[key] = []
+    reduced_iou = {}
+    for iou in ious:
+        for key, value in iou.items():
+            if key not in reduced_iou:
+                reduced_iou[key] = []
             if value is None:
-                value = 0.0
-            reduced[key].append(value)
-    for key, values in reduced.items():
+                continue
+            reduced_iou[key].append(value)
+    reduced_acc = {}
+    for acc in accs:
+        for key, value in acc.items():
+            if key not in reduced_acc:
+                reduced_acc[key] = []
+            if value is None:
+                continue
+            reduced_acc[key].append(value)
+    for key, values in reduced_iou.items():
         if key == 'total':
             continue
         mIoU = np.mean(values)
-        table.add_row(key, iou_to_string(mIoU))
+        mAcc = np.mean(reduced_acc[key])
+        table.add_row(key, percentage_to_string(mIoU),
+                      percentage_to_string(mAcc))
 
-    scene_total = iou_to_string(
-        np.mean([r['total'] for r in results if 'total' in r]))
-    table.add_row('Total', scene_total)
+    scene_total = percentage_to_string(
+        np.mean([r['total'] for r in ious if 'total' in r]))
+    scene_total_acc = percentage_to_string(
+        np.mean([r['total'] for r in accs if 'total' in r]))
+    table.add_row('Total', scene_total, scene_total_acc)
 
     console = Console()
     console.print(table)
