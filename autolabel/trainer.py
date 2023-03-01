@@ -62,6 +62,7 @@ class SimpleTrainer(Trainer):
     def train_step(self, data):
         rays_o = data['rays_o'].to(self.device)  # [B, 3]
         rays_d = data['rays_d'].to(self.device)  # [B, 3]
+        direction_norms = data['direction_norms'].to(self.device)  # [B, 1]
         gt_rgb = data['pixels'].to(self.device)  # [B, 3]
         gt_depth = data['depth'].to(self.device)  # [B, 3]
         gt_semantic = data['semantic'].to(self.device)
@@ -70,6 +71,7 @@ class SimpleTrainer(Trainer):
 
         outputs = self.model.render(rays_o,
                                     rays_d,
+                                    direction_norms,
                                     staged=False,
                                     bg_color=None,
                                     perturb=True,
@@ -102,10 +104,12 @@ class SimpleTrainer(Trainer):
     def test_step(self, data):
         rays_o = data['rays_o']  # [B, N, 3]
         rays_d = data['rays_d']  # [B, N, 3]
+        direction_norms = data['direction_norms']  # [B, N, 1]
         H, W = data['H'], data['W']
 
         outputs = self.model.render(rays_o,
                                     rays_d,
+                                    direction_norms,
                                     staged=True,
                                     perturb=False,
                                     **vars(self.opt))
@@ -122,6 +126,7 @@ class SimpleTrainer(Trainer):
     def eval_step(self, data):
         rays_o = data['rays_o'].to(self.device)  # [B, 3]
         rays_d = data['rays_d'].to(self.device)  # [B, 3]
+        direction_norms = data['direction_norms'].to(self.device)  # [B, 1]
         gt_rgb = data['pixels'].to(self.device)  # [B, H, W, 3]
         gt_depth = data['depth'].to(self.device)  # [B, H, W]
         gt_semantic = data['semantic'].to(self.device)  # [B, H, W]
@@ -129,6 +134,7 @@ class SimpleTrainer(Trainer):
 
         outputs = self.model.render(rays_o,
                                     rays_d,
+                                    direction_norms,
                                     staged=True,
                                     bg_color=None,
                                     perturb=False,

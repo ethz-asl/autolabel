@@ -34,7 +34,7 @@ def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
     directions /= norm
     for i in range(directions.shape[0]):
         directions[i] = R_WC @ directions[i]
-    return directions
+    return directions, norm
 
 
 class LenDataset(torch.utils.data.IterableDataset):
@@ -50,6 +50,7 @@ class LenDataset(torch.utils.data.IterableDataset):
 
     def __len__(self):
         return self.length
+
 
 class LazyImageLoader:
 
@@ -186,11 +187,13 @@ class BaseDataset(torch.utils.data.IterableDataset):
         semantics = np.zeros(batch_size, dtype=int)
         ray_o = np.zeros((batch_size, 3), dtype=np.float32)
         ray_d = np.zeros((batch_size, 3), dtype=np.float32)
+        direction_norms = np.zeros((batch_size, 1), dtype=np.float32)
 
         out = {
             'rays_o': ray_o,
             'rays_d': ray_d,
             'pixels': pixels,
+            'direction_norms': direction_norms,
             'depth': depths,
             'semantic': semantics,
         }
@@ -218,9 +221,11 @@ class BaseDataset(torch.utils.data.IterableDataset):
                 ray_indices].astype(int) - 1
             ray_o[start:end] = np.broadcast_to(self.origins[image_index][None],
                                                (ray_indices.shape[0], 3))
-            ray_d[start:end] = self._compute_direction(image_index,
-                                                       ray_indices,
-                                                       randomize=True)
+            dirs, norm = self._compute_direction(image_index,
+                                                 ray_indices,
+                                                 randomize=True)
+            ray_d[start:end] = dirs
+            direction_norms[start:end] = norm
 
             if self.features is not None:
                 width = int(self.w)
@@ -239,8 +244,9 @@ class BaseDataset(torch.utils.data.IterableDataset):
         image = self.images[image_index].reshape(self.h, self.w, 3)
         ray_o = np.broadcast_to(self.origins[image_index],
                                 (self.h, self.w, 3)).astype(np.float32)
-        ray_d = self._compute_direction(image_index, np.arange(
-            self.resolution)).reshape(self.h, self.w, 3).astype(np.float32)
+        ray_d, norms = self._compute_direction(image_index,
+                                               np.arange(self.resolution))
+        ray_d = ray_d.reshape(self.h, self.w, 3).astype(np.float32)
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
             self.h, self.w)
@@ -251,7 +257,8 @@ class BaseDataset(torch.utils.data.IterableDataset):
             'depth': depth,
             'semantic': semantic,
             'H': self.h,
-            'W': self.w
+            'W': self.w,
+            'direction_norms': norms,
         }
         if self.features is not None:
             out['features'] = self.features[image_index]
@@ -339,7 +346,6 @@ class SceneDataset(BaseDataset):
         if features is not None:
             self._load_features(features)
         self.error_map = None
-        self.sample_chunk_size = 32
         self.n_classes = self.scene.n_classes
 
     def _load_images(self):
@@ -445,6 +451,8 @@ class SceneDataset(BaseDataset):
 import threading
 import time
 from collections import deque
+
+
 class DynamicDataset(BaseDataset):
 
     def __init__(self, batch_size, camera):
@@ -469,7 +477,8 @@ class DynamicDataset(BaseDataset):
 
     def _prefetch(self):
         while not self.stopped:
-            if len(self.features) == 0 or len(self.prefetch_buffer) >= self.prefetch_buffer_size:
+            if len(self.features) == 0 or len(
+                    self.prefetch_buffer) >= self.prefetch_buffer_size:
                 time.sleep(0.1)
                 continue
             self.prefetch_buffer.append(self._next_train())
@@ -500,7 +509,9 @@ class DynamicDataset(BaseDataset):
         self.origins.append(T_WC[:3, 3])
         self.images.append(rgb.reshape(-1, 3) / 255.)
         self.depths.append(depth.reshape(-1))
-        self.features.append(features.reshape(self.feature_height * self.feature_width, features.shape[2]))
+        self.features.append(
+            features.reshape(self.feature_height * self.feature_width,
+                             features.shape[2]))
         self.semantics.append(np.zeros(self.resolution, dtype=np.uint16))
         self.n_examples = len(self.images)
 

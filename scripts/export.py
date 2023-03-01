@@ -77,8 +77,15 @@ def post_process(flags, p_semantic):
 def render_frame(model, batch):
     rays_o = torch.tensor(batch['rays_o']).cuda()
     rays_d = torch.tensor(batch['rays_d']).cuda()
+    direction_norms = torch.tensor(batch['direction_norms']).cuda()
     depth = torch.tensor(batch['depth']).cuda()
-    outputs = model.render(rays_o, rays_d, staged=True, perturb=False)
+    outputs = model.render(rays_o,
+                           rays_d,
+                           direction_norms,
+                           staged=True,
+                           perturb=False,
+                           num_steps=512,
+                           upsample_steps=0)
     return outputs['semantic'].argmax(dim=-1).cpu().numpy()
 
 

@@ -54,9 +54,12 @@ class Evaluator:
             pixels = torch.tensor(batch['pixels']).to(self.device)
             rays_o = torch.tensor(batch['rays_o']).to(self.device)
             rays_d = torch.tensor(batch['rays_d']).to(self.device)
+            direction_norms = torch.tensor(batch['direction_norms']).to(
+                self.device)
             depth = torch.tensor(batch['depth']).to(self.device)
             outputs = self.model.render(rays_o,
                                         rays_d,
+                                        direction_norms,
                                         staged=True,
                                         perturb=False)
             p_semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
@@ -290,8 +293,13 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
     def _predict_semantic(self, batch):
         rays_o = torch.tensor(batch['rays_o']).to(self.device)
         rays_d = torch.tensor(batch['rays_d']).to(self.device)
+        direction_norms = torch.tensor(batch['direction_norms']).to(self.device)
         depth = torch.tensor(batch['depth']).to(self.device)
-        outputs = self.model.render(rays_o, rays_d, staged=True, perturb=False)
+        outputs = self.model.render(rays_o,
+                                    rays_d,
+                                    direction_norms,
+                                    staged=True,
+                                    perturb=False)
         features = outputs['semantic_features']
         features = (features / torch.norm(features, dim=-1, keepdim=True))
         text_features = self.text_features
