@@ -455,8 +455,9 @@ from collections import deque
 
 class DynamicDataset(BaseDataset):
 
-    def __init__(self, batch_size, camera):
+    def __init__(self, batch_size, camera, capacity=None):
         super().__init__(batch_size, camera)
+        self.capacity = capacity
         self.poses = []
         self.rotations = []
         self.origins = []
@@ -514,6 +515,17 @@ class DynamicDataset(BaseDataset):
                              features.shape[2]))
         self.semantics.append(np.zeros(self.resolution, dtype=np.uint16))
         self.n_examples = len(self.images)
+
+        if self.capacity is not None and len(self.poses) > self.capacity:
+            remove_index = np.random.randint(0, len(self.poses))
+            del self.poses[remove_index]
+            del self.rotations[remove_index]
+            del self.origins[remove_index]
+            del self.images[remove_index]
+            del self.depths[remove_index]
+            del self.features[remove_index]
+            del self.semantics[remove_index]
+            self.n_examples = len(self.images)
 
     def __len__(self):
         return self.n_examples

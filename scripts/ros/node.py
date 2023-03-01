@@ -3,7 +3,7 @@ import os
 import time
 from argparse import Namespace
 import rospy
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
 from cv_bridge import CvBridge, CvBridgeError
@@ -14,13 +14,14 @@ from torch import optim
 from torch.nn import functional as F
 import tf
 from autolabel.utils.feature_utils import get_feature_extractor
-from autolabel.utils import Camera
+from autolabel.utils import Camera, ros_utils
 from autolabel.trainer import SimpleTrainer
 from autolabel import model_utils
 from autolabel.dataset import DynamicDataset
 from autolabel.dataset import _compute_direction
 from autolabel.constants import COLORS
 from autolabel.utils import ros_utils
+from autolabel import visualization
 from scipy.spatial.transform import Rotation
 import threading
 from std_srvs.srv import Empty
@@ -176,13 +177,8 @@ class TrainingLoop:
             fp16=True,
             ema_decay=0.95,
             lr_scheduler=scheduler)
-        self.camera = Camera(
-            np.array([[513.104, 0.0, 321.532], [0.0, 513.104, 184.124],
-                      [0., 0., 1.]]), (640, 360))
-        self.dataset = DynamicDataset(2048, self.camera)
-        self.loader = torch.utils.data.DataLoader(self.dataset,
-                                                  batch_size=None,
-                                                  num_workers=0)
+        self.dataset = None
+        self.loader = None
         self.initialized = False
         self.training = True
         self.done = False
@@ -198,6 +194,17 @@ class TrainingLoop:
         self.feature_pub = rospy.Publisher('/autolabel/features',
                                            Image,
                                            queue_size=1)
+        self.depth_pub = rospy.Publisher('/autolabel/depth',
+                Image, queue_size=1)
+
+    def set_camera(self, msg):
+        if self.dataset is None:
+            K = np.array(msg.K).reshape(3, 3)
+            camera = Camera(K, (msg.width, msg.height))
+            self.dataset = DynamicDataset(2048, camera, capacity=325)
+            self.loader = torch.utils.data.DataLoader(self.dataset,
+                                                      batch_size=None,
+                                                      num_workers=0)
 
     def train(self):
         while True:
@@ -250,7 +257,15 @@ class TrainingLoop:
         feature_msg = self.bridge.features_to_message(features)
         self.feature_pub.publish(feature_msg)
 
+        depth = outputs['depth']
+        frame = visualization.visualize_depth(
+                depth.cpu().numpy(), maxdepth=10.0)[:, :, :3]
+        msg = self.bridge.image_to_message(frame)
+        self.depth_pub.publish(msg)
+
     def add_frame(self, frame):
+        if self.dataset is None:
+            return
         self.dataset.add_frame(frame.T_CW, frame.image, frame.depth,
                                frame.features)
         self.initialized = True
@@ -283,10 +298,11 @@ class AutolabelNode:
                                              PoseStamped,
                                              self.keyframe_callback,
                                              queue_size=20)
+        self.camera_info_sub = rospy.Subscriber('/slam/camera_info', CameraInfo, self.camera_info_callback)
         self.prompt_sub = rospy.Subscriber('/autolabel/segmentation_classes', String, self.prompt_callback)
-        self.rgb_buffer = ros_utils.MessageBuffer(self.sync_threshold)
-        self.depth_buffer = ros_utils.MessageBuffer(self.sync_threshold)
-        self.pose_buffer = ros_utils.MessageBuffer(self.sync_threshold)
+        self.rgb_buffer = ros_utils.MessageBuffer(self.sync_threshold, max_size=10)
+        self.depth_buffer = ros_utils.MessageBuffer(self.sync_threshold, max_size=10)
+        self.pose_buffer = ros_utils.MessageBuffer(self.sync_threshold, max_size=10)
 
         self.toggle_service = rospy.Service('/autolabel/train', Empty, self.toggle_training)
         self.read_service = rospy.Service('/autolabel/pause', Empty, self.toggle_reading)
@@ -296,8 +312,6 @@ class AutolabelNode:
             os.makedirs(os.path.join(self.debug_log, 'rgb'), exist_ok=True)
             os.makedirs(os.path.join(self.debug_log, 'depth'), exist_ok=True)
             os.makedirs(os.path.join(self.debug_log, 'pose'), exist_ok=True)
-            self.training_loop.camera.write(
-                os.path.join(self.debug_log, 'intrinsics.txt'))
 
     def toggle_training(self, req):
         self.training_loop.training = not self.training_loop.training
@@ -365,6 +379,10 @@ class AutolabelNode:
 
     def odometry_callback(self, msg):
         self.training_loop.odometry_pose = to_pose(msg)
+
+    def camera_info_callback(self, msg):
+        self.training_loop.set_camera(msg)
+        self.camera_info_sub.unregister()
 
     def run(self):
         rospy.spin()
