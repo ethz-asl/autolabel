@@ -291,6 +291,8 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
             os.path.join(gt_path, f"{example_index:06}.png"))
 
     def _predict_semantic(self, batch):
+        if self.time:
+            start = time.time()
         rays_o = torch.tensor(batch['rays_o']).to(self.device)
         rays_d = torch.tensor(batch['rays_d']).to(self.device)
         direction_norms = torch.tensor(batch['direction_norms']).to(self.device)
@@ -312,6 +314,14 @@ class OpenVocabEvaluator2D(OpenVocabEvaluator):
             similarities[i, :, :] = (features[i, :, None] *
                                      text_features).sum(dim=-1)
         similarities = similarities.argmax(dim=-1)
+        if self.time:
+            torch.cuda.synchronize()
+            end = time.time()
+            n_pixels = H * W
+            pixels_per_second = n_pixels / (end - start)
+            print(
+                f"Semantic prediction for {n_pixels} took {end - start} seconds. {pixels_per_second} pixels per second."
+            )
         return self.label_id_map[similarities]
 
     def _read_gt_semantic(self, path, camera):

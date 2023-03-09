@@ -160,7 +160,8 @@ def main(flags):
                     checkpoint=flags.feature_checkpoint,
                     debug=flags.debug,
                     stride=flags.stride,
-                    save_figures=vis_path)
+                    save_figures=vis_path,
+                    time=flags.time)
         assert evaluator.features == params.features
         evaluator.reset(model, label_map, vis_path)
         iou, acc = evaluator.eval(dataset)
