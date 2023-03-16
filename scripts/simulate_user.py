@@ -124,9 +124,12 @@ class UserSimulation:
                 pixels = torch.tensor(batch['pixels']).to(self.device)
                 rays_o = torch.tensor(batch['rays_o']).to(self.device)
                 rays_d = torch.tensor(batch['rays_d']).to(self.device)
+                direction_norms = torch.tensor(batch['direction_norms']).to(
+                    self.device)
                 depth = torch.tensor(batch['depth']).to(self.device)
                 outputs = self.model.render(rays_o,
                                             rays_d,
+                                            direction_norms,
                                             staged=True,
                                             perturb=False)
         self.model.train()
@@ -154,9 +157,12 @@ class UserSimulation:
                     pixels = torch.tensor(batch['pixels']).to(self.device)
                     rays_o = torch.tensor(batch['rays_o']).to(self.device)
                     rays_d = torch.tensor(batch['rays_d']).to(self.device)
+                    direction_norms = torch.tensor(batch['direction_norms']).to(
+                        self.device)
                     depth = torch.tensor(batch['depth']).to(self.device)
                     outputs = self.model.render(rays_o,
                                                 rays_d,
+                                                direction_norms,
                                                 staged=True,
                                                 perturb=False)
                     p_rgb = (np.clip(outputs['image'].cpu().numpy(), 0., 1.) *

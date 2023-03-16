@@ -55,8 +55,13 @@ def render(model,
            maxdepth=10.0):
     rays_o = torch.tensor(batch['rays_o']).cuda()
     rays_d = torch.tensor(batch['rays_d']).cuda()
+    direction_norms = torch.tensor(batch['direction_norms']).cuda()
     depth = torch.tensor(batch['depth']).cuda()
-    outputs = model.render(rays_o, rays_d, staged=True, perturb=False)
+    outputs = model.render(rays_o,
+                           rays_d,
+                           direction_norms,
+                           staged=True,
+                           perturb=False)
     p_semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
     frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)
     square_size = (size[0] // 2, size[1] // 2)
