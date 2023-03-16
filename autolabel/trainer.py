@@ -70,10 +70,10 @@ class SimpleTrainer(Trainer):
         loss = self.opt.rgb_weight * self.criterion(pred_rgb, gt_rgb).mean()
 
         pred_depth = outputs['depth']
-        has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
-        depth_loss = has_depth * torch.abs(pred_depth - gt_depth)
+        has_depth = (gt_depth > DEPTH_EPSILON)
+        depth_loss = torch.abs(pred_depth[has_depth] - gt_depth[has_depth])
 
-        loss = loss.mean() + self.opt.depth_weight * depth_loss.mean()
+        loss = loss + self.opt.depth_weight * depth_loss.mean()
 
         if self.opt.feature_loss:
             gt_features = data['features'].to(self.device)
@@ -129,9 +129,9 @@ class SimpleTrainer(Trainer):
         pred_semantic = outputs['semantic']
 
         loss = self.criterion(pred_rgb, gt_rgb).mean()
-        has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
-        loss += self.opt.depth_weight * (
-            has_depth * torch.abs(pred_depth - gt_depth)).mean()
+        has_depth = gt_depth > DEPTH_EPSILON
+        loss += self.opt.depth_weight * torch.abs(pred_depth[has_depth] -
+                                                  gt_depth[has_depth]).mean()
 
         has_semantic = gt_semantic >= 0
         if has_semantic.sum().item() > 0:
