@@ -10,15 +10,16 @@ params:
 
 Output frames are saved at <scene>/output/semantic/
 """
-import os
 import cv2
 import numpy as np
-import torch
+import os
 from skimage import measure
-from autolabel.utils import Scene
+import torch
 from tqdm import tqdm
-from autolabel.dataset import SceneDataset
+
 from autolabel import model_utils
+from autolabel.dataset import SceneDataset
+from autolabel.utils import Scene
 
 MAX_WIDTH = 640
 

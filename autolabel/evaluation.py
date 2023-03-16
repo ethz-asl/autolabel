@@ -1,11 +1,11 @@
-import torch
+import cv2
 import numpy as np
 import os
-import cv2
 from PIL import Image
+import torch
 from tqdm import tqdm
+
 from autolabel.constants import COLORS
-from rich.progress import track
 
 
 def compute_iou(p_semantic, gt_semantic, class_index):

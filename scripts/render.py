@@ -1,26 +1,14 @@
-import os
-import math
-import argparse
-from argparse import Namespace
-from os import path
-import csv
-import queue
-import threading
-import cv2
-import numpy as np
-import torch
-import pickle
 import h5py
-from tqdm import tqdm
+import numpy as np
+import os
+import pickle
 from skvideo.io.ffmpeg import FFmpegWriter
-from torch import optim
+import torch
 from tqdm import tqdm
-from autolabel.dataset import SceneDataset, LenDataset
-from autolabel.trainer import SimpleTrainer
+
 from autolabel.constants import COLORS
-from autolabel import model_utils
-from autolabel import visualization
-from matplotlib import pyplot
+from autolabel.dataset import SceneDataset
+from autolabel import model_utils, visualization
 
 
 def read_args():
