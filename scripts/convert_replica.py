@@ -129,7 +129,8 @@ class Exporter:
 
         poses = scene.poses[::10]
         depths = scene.depth_paths()[::10]
-        for T_WC, depth in zip(poses, tqdm(depths, desc="Computing bounds")):
+        for T_CW, depth in zip(poses, tqdm(depths, desc="Computing bounds")):
+            T_WC = np.linalg.inv(T_CW)
             depth = o3d.io.read_image(depth)
 
             pc_C = o3d.geometry.PointCloud.create_from_depth_image(
