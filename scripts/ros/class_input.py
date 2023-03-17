@@ -7,7 +7,9 @@ from std_msgs.msg import String
 
 DEFAULT_CLASS = "background; other"
 
+
 class ListView(QtWidgets.QWidget):
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QtWidgets.QVBoxLayout()
@@ -20,7 +22,8 @@ class ListView(QtWidgets.QWidget):
         self.items.append(item)
         label = QtWidgets.QLabel(item)
         label.setMargin(20)
-        label.setStyleSheet(f"background-color: rgb({color[0]}, {color[1]}, {color[2]});")
+        label.setStyleSheet(
+            f"background-color: rgb({color[0]}, {color[1]}, {color[2]});")
         self.layout.addWidget(label)
         self.update()
 
@@ -35,6 +38,7 @@ class ListView(QtWidgets.QWidget):
 
 
 class SegmentingApplication(QtWidgets.QMainWindow):
+
     def __init__(self):
         super().__init__()
         self.classes = []
@@ -56,7 +60,9 @@ class SegmentingApplication(QtWidgets.QMainWindow):
         self._publish_classes()
 
     def _init_ros(self):
-        self.pub = rospy.Publisher("/autolabel/segmentation_classes", String, queue_size=1)
+        self.pub = rospy.Publisher("/autolabel/segmentation_classes",
+                                   String,
+                                   queue_size=1)
 
     def _create_input_line(self):
         layout = QtWidgets.QHBoxLayout()
@@ -95,6 +101,7 @@ def main():
     window.show()
 
     app.exec()
+
 
 if __name__ == "__main__":
     main()

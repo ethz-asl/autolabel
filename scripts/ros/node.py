@@ -41,8 +41,14 @@ def read_args():
         help=
         "Save incoming images to this directory in the autolabel format for debugging."
     )
-    parser.add_argument('--bound', '-b', type=float, default=2.5,
-            help="The size of bounding volume of the scene. Range will be from -bound to bound in x, y and z.")
+    parser.add_argument(
+        '--bound',
+        '-b',
+        type=float,
+        default=2.5,
+        help=
+        "The size of bounding volume of the scene. Range will be from -bound to bound in x, y and z."
+    )
     return parser.parse_args()
 
 
@@ -67,6 +73,7 @@ class Frame:
         self.image = image
         self.depth = depth
         self.features = features
+
 
 class Bridge:
 
@@ -126,7 +133,8 @@ class Bridge:
         feature_map = F.normalize(feature_map, dim=2)
         H, W, _ = feature_map.shape
         # similarities = torch.zeros((H, W, C), dtype=feature_map.dtype)
-        similarities = (feature_map[:, :, None] * self.prompt_features).sum(dim=3)
+        similarities = (feature_map[:, :, None] *
+                        self.prompt_features).sum(dim=3)
         return similarities.argmax(dim=2)
 
 
@@ -137,8 +145,8 @@ class TrainingLoop:
         min_bounds = np.array([-bound, -bound, -bound])
         max_bounds = np.array([bound, bound, bound])
         lr = 1e-2
-        scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(optimizer,
-                [1, 10, 50, 75], gamma=0.1)
+        scheduler = lambda optimizer: optim.lr_scheduler.MultiStepLR(
+            optimizer, [1, 10, 50, 75], gamma=0.1)
         scheduler = lambda optimizer: optim.lr_scheduler.ConstantLR(
             optimizer, lr)
         optimizer = lambda model: torch.optim.Adam([
@@ -195,7 +203,8 @@ class TrainingLoop:
                                            Image,
                                            queue_size=1)
         self.depth_pub = rospy.Publisher('/autolabel/depth',
-                Image, queue_size=1)
+                                         Image,
+                                         queue_size=1)
 
     def set_camera(self, msg):
         if self.dataset is None:
@@ -222,7 +231,6 @@ class TrainingLoop:
                     self.render_frame()
             else:
                 time.sleep(0.05)
-
 
     def render_frame(self):
         T_CW = self.odometry_pose
@@ -258,8 +266,8 @@ class TrainingLoop:
         self.feature_pub.publish(feature_msg)
 
         depth = outputs['depth']
-        frame = visualization.visualize_depth(
-                depth.cpu().numpy(), maxdepth=10.0)[:, :, :3]
+        frame = visualization.visualize_depth(depth.cpu().numpy(),
+                                              maxdepth=10.0)[:, :, :3]
         msg = self.bridge.image_to_message(frame)
         self.depth_pub.publish(msg)
 
@@ -298,14 +306,21 @@ class AutolabelNode:
                                              PoseStamped,
                                              self.keyframe_callback,
                                              queue_size=20)
-        self.camera_info_sub = rospy.Subscriber('/slam/camera_info', CameraInfo, self.camera_info_callback)
-        self.prompt_sub = rospy.Subscriber('/autolabel/segmentation_classes', String, self.prompt_callback)
-        self.rgb_buffer = ros_utils.MessageBuffer(self.sync_threshold, max_size=10)
-        self.depth_buffer = ros_utils.MessageBuffer(self.sync_threshold, max_size=10)
-        self.pose_buffer = ros_utils.MessageBuffer(self.sync_threshold, max_size=10)
+        self.camera_info_sub = rospy.Subscriber('/slam/camera_info', CameraInfo,
+                                                self.camera_info_callback)
+        self.prompt_sub = rospy.Subscriber('/autolabel/segmentation_classes',
+                                           String, self.prompt_callback)
+        self.rgb_buffer = ros_utils.MessageBuffer(self.sync_threshold,
+                                                  max_size=10)
+        self.depth_buffer = ros_utils.MessageBuffer(self.sync_threshold,
+                                                    max_size=10)
+        self.pose_buffer = ros_utils.MessageBuffer(self.sync_threshold,
+                                                   max_size=10)
 
-        self.toggle_service = rospy.Service('/autolabel/train', Empty, self.toggle_training)
-        self.read_service = rospy.Service('/autolabel/pause', Empty, self.toggle_reading)
+        self.toggle_service = rospy.Service('/autolabel/train', Empty,
+                                            self.toggle_training)
+        self.read_service = rospy.Service('/autolabel/pause', Empty,
+                                          self.toggle_reading)
 
         self.debug_log = flags.log
         if self.debug_log is not None:

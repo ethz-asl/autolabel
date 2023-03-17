@@ -177,7 +177,9 @@ def copy_3d_semantics(scene_in, scene, scene_out, label_helper):
                 try:
                     label_ids[vertex] = label_id
                 except IndexError:
-                    print(f"Index error for {scene} vertex {vertex} and seg: {seg}")
+                    print(
+                        f"Index error for {scene} vertex {vertex} and seg: {seg}"
+                    )
 
     out_mesh = os.path.join(scene_out, 'mesh.ply')
     mesh.export(out_mesh)
