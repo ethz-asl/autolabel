@@ -246,9 +246,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
                 ray_indices].astype(int) - 1
             ray_o[start:end] = np.broadcast_to(self.origins[image_index, None],
                                                (ray_indices.shape[0], 3))
-            ray_d[start:end], direction_norms[start:end] = self._compute_direction(image_index,
-                                                       ray_indices,
-                                                       randomize=True)
+            ray_d[start:end], direction_norms[
+                start:end] = self._compute_direction(image_index,
+                                                     ray_indices,
+                                                     randomize=True)
 
             if self.features is not None:
                 width = int(self.w)
@@ -267,8 +268,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
         image = self.images[image_index].reshape(self.h, self.w, 3)
         ray_o = np.broadcast_to(self.origins[image_index],
                                 (self.h, self.w, 3)).astype(np.float32)
-        ray_d, direction_norms = self._compute_direction(image_index, np.arange(
-            self.resolution)).reshape(self.h, self.w, 3).astype(np.float32)
+        ray_d, direction_norms = self._compute_direction(
+            image_index,
+            np.arange(self.resolution)).reshape(self.h, self.w,
+                                                3).astype(np.float32)
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
             self.h, self.w)
@@ -280,7 +283,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
             'semantic': semantic,
             'H': self.h,
             'W': self.w,
-            'direction_norms':direction_norms
+            'direction_norms': direction_norms
         }
         if self.features is not None:
             out['features'] = self.features[image_index]
