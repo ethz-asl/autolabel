@@ -43,3 +43,18 @@ We have written data conversion scripts for different publicly available dataset
 
 Renders from the [Replica](https://github.com/facebookresearch/Replica-Dataset) dataset published by [SemanticNeRF](https://github.com/Harry-Zhi/semantic_nerf/) can be converted using the `scripts/convert_replica.py` script.
 
+## Importing ScanNet scenes
+
+ScanNet scenes can be imported with the `scripts/convert_scannet.py` script.
+
+It is used as:
+```
+python scripts/convert_scannet.py <scannet-directory> --label-map <path-to-labelmap.tsv> --out <path-to-output-directory> --stride <N>
+```
+
+- `scannet-directory` this is the path to the raw scannet dataset which contains each scene as a subdirectory. Each scene in turn contains the `*-label-filt.zip`, `*.sens` etc. files in the ScanNet format.
+- `--out` specifies the output directory. Each scene will be stored as a subdirectory.
+- `--stride` is an integer parameter specifying how many frames to keep. Only every Nth frame is kept in the scan.
+
+This will in addition also create `mesh.ply` and `mesh_labels.npy` files use by the vision-language evaluation scripts.
+
