@@ -76,6 +76,10 @@ python scripts/export.py bench --objects 1
 python scripts/render.py bench --model-dir bench/nerf/g15_hg+freq_dino_rgb1.0_d0.1_s1.0_f0.5_do0.1/ --out bench.mp4
 ```
 
+### Vision-language feature fields
+
+The repository contains an implementation of vision-language feature fields. See [`docs/vision-language.md`](docs/vision-language.md) for instructions on how to run and use vision-language examples and the ROS node.
+
 ### Keybindings
 
 The GUI can be controlled with the following keybindings:
@@ -141,6 +145,7 @@ Data cam be imported from various sources, including:
 - The [Stray Scanner app](https://apps.apple.com/us/app/stray-scanner/id1557051662)
 - [SemanticNeRF replica renders](https://github.com/Harry-Zhi/semantic_nerf/)
 - [ARKitScenes](https://github.com/apple/ARKitScenes)
+- [ScanNet](http://www.scan-net.org)
 
 See the [data documentation](docs/data.md) for instructions on how to import from different sources.
 
