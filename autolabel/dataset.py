@@ -34,7 +34,7 @@ def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
     directions /= norm
     for i in range(directions.shape[0]):
         directions[i] = R_WC @ directions[i]
-    return directions
+    return directions, norm
 
 
 class LenDataset(torch.utils.data.IterableDataset):
@@ -212,6 +212,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         semantics = np.zeros(batch_size, dtype=int)
         ray_o = np.zeros((batch_size, 3), dtype=np.float32)
         ray_d = np.zeros((batch_size, 3), dtype=np.float32)
+        direction_norms = np.zeros((batch_size, 1), dtype=np.float32)
 
         out = {
             'rays_o': ray_o,
@@ -219,6 +220,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
             'pixels': pixels,
             'depth': depths,
             'semantic': semantics,
+            'direction_norms': direction_norms
         }
         if self.features is not None:
             features = np.zeros((batch_size, self.features.shape[-1]),
@@ -244,7 +246,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
                 ray_indices].astype(int) - 1
             ray_o[start:end] = np.broadcast_to(self.origins[image_index, None],
                                                (ray_indices.shape[0], 3))
-            ray_d[start:end] = self._compute_direction(image_index,
+            ray_d[start:end], direction_norms[start:end] = self._compute_direction(image_index,
                                                        ray_indices,
                                                        randomize=True)
 
@@ -265,7 +267,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
         image = self.images[image_index].reshape(self.h, self.w, 3)
         ray_o = np.broadcast_to(self.origins[image_index],
                                 (self.h, self.w, 3)).astype(np.float32)
-        ray_d = self._compute_direction(image_index, np.arange(
+        ray_d, direction_norms = self._compute_direction(image_index, np.arange(
             self.resolution)).reshape(self.h, self.w, 3).astype(np.float32)
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
@@ -277,7 +279,8 @@ class SceneDataset(torch.utils.data.IterableDataset):
             'depth': depth,
             'semantic': semantic,
             'H': self.h,
-            'W': self.w
+            'W': self.w,
+            'direction_norms':direction_norms
         }
         if self.features is not None:
             out['features'] = self.features[image_index]
