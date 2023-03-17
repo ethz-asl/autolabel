@@ -41,5 +41,7 @@ The `scripts/ros/` directory contains ROS nodes which can be used to integrate w
 
 It can be run with `python scripts/ros/node.py --checkpoint <lseg-weights> -b <bound>`. The bound parameter is optional and defaults to 2.5 meters. It defines the size of the volume, extending `bound` meters from `[-bound, -bound, -bound]` to `[bound, bound, bound]` in the x, y and z directions.
 
+For an implementation of the SLAM node, you can use the ROS node from the [SpectacularAI SDK examples](https://github.com/SpectacularAI/sdk-examples/blob/main/python/oak/mapping_ros.py), in case you have an OAK-D stereo camera.
+
 `scripts/ros/class_input.py` presents a graphical user interface which can be used to define the segmentation classes used by the ROS node. It published class at `/autolabel/segmentation_classes`.
 
