@@ -1,21 +1,11 @@
 import os
-import glob
-import tqdm
-import math
-import random
-import time
-from tqdm import tqdm
-import numpy as np
-from datetime import datetime
 import tensorboardX
-
-import cv2
-
 import torch
-import torch.nn as nn
 from torch.nn import functional as F
 from torch import optim
-from torch.utils.data import Dataset, DataLoader
+import tqdm
+from tqdm import tqdm
+
 from torch_ngp.nerf.utils import Trainer
 
 DEPTH_EPSILON = 0.01
@@ -62,6 +52,7 @@ class SimpleTrainer(Trainer):
     def train_step(self, data):
         rays_o = data['rays_o'].to(self.device)  # [B, 3]
         rays_d = data['rays_d'].to(self.device)  # [B, 3]
+        direction_norms = data['direction_norms'].to(self.device)  # [B, 1]
         gt_rgb = data['pixels'].to(self.device)  # [B, 3]
         gt_depth = data['depth'].to(self.device)  # [B, 3]
         gt_semantic = data['semantic'].to(self.device)
@@ -70,6 +61,7 @@ class SimpleTrainer(Trainer):
 
         outputs = self.model.render(rays_o,
                                     rays_d,
+                                    direction_norms,
                                     staged=False,
                                     bg_color=None,
                                     perturb=True,
@@ -80,10 +72,10 @@ class SimpleTrainer(Trainer):
         loss = self.opt.rgb_weight * self.criterion(pred_rgb, gt_rgb).mean()
 
         pred_depth = outputs['depth']
-        has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
-        depth_loss = has_depth * torch.abs(pred_depth - gt_depth)
+        has_depth = (gt_depth > DEPTH_EPSILON)
+        depth_loss = torch.abs(pred_depth[has_depth] - gt_depth[has_depth])
 
-        loss = loss.mean() + self.opt.depth_weight * depth_loss.mean()
+        loss = loss + self.opt.depth_weight * depth_loss.mean()
 
         if self.opt.feature_loss:
             gt_features = data['features'].to(self.device)
@@ -102,10 +94,12 @@ class SimpleTrainer(Trainer):
     def test_step(self, data):
         rays_o = data['rays_o']  # [B, N, 3]
         rays_d = data['rays_d']  # [B, N, 3]
+        direction_norms = data['direction_norms']  # [B, N, 1]
         H, W = data['H'], data['W']
 
         outputs = self.model.render(rays_o,
                                     rays_d,
+                                    direction_norms,
                                     staged=True,
                                     perturb=False,
                                     **vars(self.opt))
@@ -122,6 +116,7 @@ class SimpleTrainer(Trainer):
     def eval_step(self, data):
         rays_o = data['rays_o'].to(self.device)  # [B, 3]
         rays_d = data['rays_d'].to(self.device)  # [B, 3]
+        direction_norms = data['direction_norms'].to(self.device)  # [B, 1]
         gt_rgb = data['pixels'].to(self.device)  # [B, H, W, 3]
         gt_depth = data['depth'].to(self.device)  # [B, H, W]
         gt_semantic = data['semantic'].to(self.device)  # [B, H, W]
@@ -129,6 +124,7 @@ class SimpleTrainer(Trainer):
 
         outputs = self.model.render(rays_o,
                                     rays_d,
+                                    direction_norms,
                                     staged=True,
                                     bg_color=None,
                                     perturb=False,
@@ -139,9 +135,9 @@ class SimpleTrainer(Trainer):
         pred_semantic = outputs['semantic']
 
         loss = self.criterion(pred_rgb, gt_rgb).mean()
-        has_depth = (gt_depth > DEPTH_EPSILON).to(pred_rgb.dtype)
-        loss += self.opt.depth_weight * (
-            has_depth * torch.abs(pred_depth - gt_depth)).mean()
+        has_depth = gt_depth > DEPTH_EPSILON
+        loss += self.opt.depth_weight * torch.abs(pred_depth[has_depth] -
+                                                  gt_depth[has_depth]).mean()
 
         has_semantic = gt_semantic >= 0
         if has_semantic.sum().item() > 0:

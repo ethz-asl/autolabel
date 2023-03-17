@@ -1,26 +1,14 @@
-import os
-import math
-import argparse
-from argparse import Namespace
-from os import path
-import csv
-import queue
-import threading
-import cv2
-import numpy as np
-import torch
-import pickle
 import h5py
-from tqdm import tqdm
+import numpy as np
+import os
+import pickle
 from skvideo.io.ffmpeg import FFmpegWriter
-from torch import optim
+import torch
 from tqdm import tqdm
-from autolabel.dataset import SceneDataset, LenDataset
-from autolabel.trainer import SimpleTrainer
+
 from autolabel.constants import COLORS
-from autolabel import model_utils
-from autolabel import visualization
-from matplotlib import pyplot
+from autolabel.dataset import SceneDataset
+from autolabel import model_utils, visualization
 
 
 def read_args():
@@ -67,8 +55,13 @@ def render(model,
            maxdepth=10.0):
     rays_o = torch.tensor(batch['rays_o']).cuda()
     rays_d = torch.tensor(batch['rays_d']).cuda()
+    direction_norms = torch.tensor(batch['direction_norms']).cuda()
     depth = torch.tensor(batch['depth']).cuda()
-    outputs = model.render(rays_o, rays_d, staged=True, perturb=False)
+    outputs = model.render(rays_o,
+                           rays_d,
+                           direction_norms,
+                           staged=True,
+                           perturb=False)
     p_semantic = outputs['semantic'].argmax(dim=-1).cpu().numpy()
     frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)
     square_size = (size[0] // 2, size[1] // 2)

@@ -178,7 +178,7 @@ class ALNetwork(NeRFRenderer):
         h = self.sigma_net(x)
 
         sigma = trunc_exp(h[..., 0])
-        geo_feat = F.relu(h[..., 1:])
+        geo_feat = h[..., 1:]
 
         return {
             'sigma': sigma,
@@ -200,6 +200,8 @@ class ALNetwork(NeRFRenderer):
             d = d[mask]
             geo_feat = geo_feat[mask]
 
+        # TinyCudaNN SH encoding requires inputs to be in [0, 1].
+        d = (d + 1) / 2
         d = self.encoder_dir(d)
 
         h = torch.cat([d, geo_feat], dim=-1)
