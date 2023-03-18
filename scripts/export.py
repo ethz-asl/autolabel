@@ -10,15 +10,16 @@ params:
 
 Output frames are saved at <scene>/output/semantic/
 """
-import os
 import cv2
 import numpy as np
-import torch
+import os
 from skimage import measure
-from autolabel.utils import Scene
+import torch
 from tqdm import tqdm
-from autolabel.dataset import SceneDataset
+
 from autolabel import model_utils
+from autolabel.dataset import SceneDataset
+from autolabel.utils import Scene
 
 MAX_WIDTH = 640
 
@@ -77,8 +78,13 @@ def post_process(flags, p_semantic):
 def render_frame(model, batch):
     rays_o = torch.tensor(batch['rays_o']).cuda()
     rays_d = torch.tensor(batch['rays_d']).cuda()
+    direction_norms = torch.tensor(batch['direction_norms']).cuda()
     depth = torch.tensor(batch['depth']).cuda()
-    outputs = model.render(rays_o, rays_d, staged=True, perturb=False)
+    outputs = model.render(rays_o,
+                           rays_d,
+                           direction_norms,
+                           staged=True,
+                           perturb=False)
     return outputs['semantic'].argmax(dim=-1).cpu().numpy()
 
 
