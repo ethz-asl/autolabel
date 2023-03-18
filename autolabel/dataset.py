@@ -18,7 +18,6 @@ CV_TO_OPENGL = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0],
 def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
                        fx: float, fy: float, cx: float, cy: float,
                        randomize: bool) -> np.ndarray:
-    directions = np.zeros((len(ray_indices), 3), dtype=np.float32)
     xs = (ray_indices % w).astype(np.float32)
     ys = ((ray_indices - xs) / w).astype(np.float32)
     if randomize:
@@ -27,6 +26,7 @@ def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
     else:
         xs += 0.5
         ys += 0.5
+    directions = np.zeros((len(ray_indices), 3), dtype=np.float32)
     directions[:, 0] = (xs - cx) / fx
     directions[:, 1] = (ys - cy) / fy
     directions[:, 2] = 1.0
@@ -202,7 +202,10 @@ class SceneDataset(torch.utils.data.IterableDataset):
                 yield self._next_train()
         else:
             for i in range(self.rotations.shape[0]):
-                yield self._get_test(i)
+                # log every 10 images
+                if i % 10 == 0:
+                    yield self._get_test(i)
+                # yield self._get_test(i)
 
     def _next_train(self):
         chunks = self.batch_size // self.sample_chunk_size
@@ -265,14 +268,18 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
     def _get_test(self, image_index):
         image = self.images[image_index].reshape(self.h, self.w, 3)
+        image_name = self.image_names[image_index]
         ray_o = np.broadcast_to(self.origins[image_index],
                                 (self.h, self.w, 3)).astype(np.float32)
         ray_d, direction_norms = self._compute_direction(image_index, np.arange(
-            self.resolution)).reshape(self.h, self.w, 3).astype(np.float32)
+            self.resolution))
+        direction_norms = direction_norms.reshape(self.h, self.w, 1).astype(np.float32)
+        ray_d = ray_d.reshape(self.h, self.w, 3).astype(np.float32)
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
             self.h, self.w)
         out = {
+            'image_name': image_name,
             'pixels': image,
             'rays_o': ray_o,
             'rays_d': ray_d,
