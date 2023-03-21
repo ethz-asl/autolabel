@@ -27,7 +27,6 @@ def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
     else:
         xs += 0.5
         ys += 0.5
-
     directions[:, 0] = (xs - cx) / fx
     directions[:, 1] = (ys - cy) / fy
     directions[:, 2] = 1.0
