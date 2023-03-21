@@ -18,6 +18,7 @@ CV_TO_OPENGL = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0],
 def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
                        fx: float, fy: float, cx: float, cy: float,
                        randomize: bool) -> np.ndarray:
+    directions = np.zeros((len(ray_indices), 3), dtype=np.float32)
     xs = (ray_indices % w).astype(np.float32)
     ys = ((ray_indices - xs) / w).astype(np.float32)
     if randomize:
@@ -26,7 +27,7 @@ def _compute_direction(R_WC: np.ndarray, ray_indices: np.ndarray, w: int,
     else:
         xs += 0.5
         ys += 0.5
-    directions = np.zeros((len(ray_indices), 3), dtype=np.float32)
+
     directions[:, 0] = (xs - cx) / fx
     directions[:, 1] = (ys - cy) / fy
     directions[:, 2] = 1.0
