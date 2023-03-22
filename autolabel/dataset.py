@@ -269,9 +269,11 @@ class SceneDataset(torch.utils.data.IterableDataset):
         ray_o = np.broadcast_to(self.origins[image_index],
                                 (self.h, self.w, 3)).astype(np.float32)
         ray_d, direction_norms = self._compute_direction(
-            image_index,
-            np.arange(self.resolution)).reshape(self.h, self.w,
-                                                3).astype(np.float32)
+            image_index, np.arange(self.resolution))
+        direction_norms = direction_norms.reshape(self.h, self.w,
+                                                  1).astype(np.float32)
+        ray_d = ray_d.reshape(self.h, self.w, 3).astype(np.float32)
+
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
             self.h, self.w)
