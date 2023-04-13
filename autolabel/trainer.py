@@ -48,11 +48,13 @@ class SimpleTrainer(Trainer):
         bar = tqdm(range(iterations), desc="Loss: N/A")
         for _ in bar:
             data = next(iterator)
-            self.optimizer.zero_grad()
+            for opt in self.optimizers:
+                opt.zero_grad()
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 _, _, loss = self.train_step(data)
             self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
+            for opt in self.optimizers:
+                self.scaler.step(opt)
             self.scaler.update()
             bar.set_description(f"Loss: {loss:.04f}")
         if self.ema is not None:
@@ -161,10 +163,10 @@ class SimpleTrainer(Trainer):
             None], loss
 
     def _step_scheduler(self, loss):
-        if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-            self.lr_scheduler.step(loss)
+        if isinstance(self.lr_schedulers[0], optim.lr_scheduler.ReduceLROnPlateau):
+            [s.step(loss) for s in self.lr_schedulers]
         else:
-            self.lr_scheduler.step()
+            [s.step() for s in self.lr_schedulers]
 
 
 class InteractiveTrainer(SimpleTrainer):
