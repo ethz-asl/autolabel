@@ -249,8 +249,8 @@ class ALNetwork(NeRFRenderer):
         sigma: [N, 1] density outputs
         returns: [N, C] semantic head outputs
         """
-        sem_features = F.relu(self.semantic_features(geo_features))
-        features = torch.cat([sem_features, geo_features], dim=1)
+        sem_features = self.semantic_features(geo_features)
+        features = torch.cat([F.relu(sem_features), geo_features], dim=1)
         return self.semantic_out(features), sem_features
 
     def network_parameters(self):
