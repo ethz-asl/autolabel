@@ -163,7 +163,8 @@ class SimpleTrainer(Trainer):
             None], loss
 
     def _step_scheduler(self, loss):
-        if isinstance(self.lr_schedulers[0], optim.lr_scheduler.ReduceLROnPlateau):
+        if isinstance(self.lr_schedulers[0],
+                      optim.lr_scheduler.ReduceLROnPlateau):
             [s.step(loss) for s in self.lr_schedulers]
         else:
             [s.step() for s in self.lr_schedulers]

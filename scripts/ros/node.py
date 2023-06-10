@@ -244,8 +244,9 @@ class TrainingLoop:
         fy = 205.
         cx = 256. / 2.
         cy = 192. / 2.
-        directions, norms = _compute_direction(R_WC, self.pixel_indices, resolution[0],
-                                        fx, fy, cx, cy, False)
+        directions, norms = _compute_direction(R_WC, self.pixel_indices,
+                                               resolution[0], fx, fy, cx, cy,
+                                               False)
         directions = directions.reshape(
             (self.render_resolution[1], self.render_resolution[0], 3))
         rays_o = torch.tensor(origins, device='cuda:0', dtype=torch.float16)
@@ -254,7 +255,8 @@ class TrainingLoop:
             with torch.cuda.amp.autocast(enabled=True):
                 outputs = self.model.render(rays_o,
                                             rays_d,
-                                            torch.tensor(norms, device='cuda:0'),
+                                            torch.tensor(norms,
+                                                         device='cuda:0'),
                                             staged=True,
                                             perturb=False,
                                             max_ray_batch=2048)
