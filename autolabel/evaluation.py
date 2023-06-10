@@ -1,4 +1,4 @@
-import torch
+import cv2
 import numpy as np
 import os
 import cv2
@@ -6,7 +6,9 @@ import open3d as o3d
 import time
 import math
 from PIL import Image
+import torch
 from tqdm import tqdm
+
 from autolabel.constants import COLORS
 from autolabel.utils.feature_utils import get_feature_extractor
 from autolabel.dataset import CV_TO_OPENGL

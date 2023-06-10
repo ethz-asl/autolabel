@@ -1,19 +1,12 @@
-import os
-import math
-import argparse
 from argparse import Namespace
-from os import path
-import csv
-import queue
-import threading
-import cv2
+import math
 import numpy as np
 import torch
-import pickle
 from torch import optim
+
+from autolabel import model_utils
 from autolabel.dataset import SceneDataset, LenDataset
 from autolabel.trainer import SimpleTrainer
-from autolabel import model_utils
 
 
 def read_args():

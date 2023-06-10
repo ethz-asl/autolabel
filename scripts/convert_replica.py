@@ -6,15 +6,16 @@ usage:
     python scripts/convert_replica.py <replica sequence> --out <output-directory>
 """
 import argparse
-import os
-import json
-import numpy as np
-import shutil
 import cv2
+import json
 import math
+import numpy as np
 import open3d as o3d
-from autolabel.utils import Scene, transform_points
+import os
+import shutil
 from tqdm import tqdm
+
+from autolabel.utils import Scene, transform_points
 
 
 def read_args():
@@ -129,7 +130,8 @@ class Exporter:
 
         poses = scene.poses[::10]
         depths = scene.depth_paths()[::10]
-        for T_WC, depth in zip(poses, tqdm(depths, desc="Computing bounds")):
+        for T_CW, depth in zip(poses, tqdm(depths, desc="Computing bounds")):
+            T_WC = np.linalg.inv(T_CW)
             depth = o3d.io.read_image(depth)
 
             pc_C = o3d.geometry.PointCloud.create_from_depth_image(

@@ -12,25 +12,18 @@ or <workspace>/<scene_name>/<model-hash>/user_simulation.csv if a workspace is s
 Usage:
     python scripts/simulate_user.py <scene>
 """
-import os
-import math
-import argparse
 from argparse import Namespace
-from os import path
-import csv
-import queue
-import threading
 import cv2
-import numpy as np
-import torch
-import pickle
-from torch import optim
-from tqdm import tqdm
-from autolabel.dataset import SceneDataset, LenDataset
-from autolabel.trainer import SimpleTrainer
-from autolabel.constants import COLORS
-from autolabel import model_utils
 from matplotlib import pyplot
+import numpy as np
+import os
+import torch
+from torch import optim
+
+from autolabel import model_utils
+from autolabel.constants import COLORS
+from autolabel.dataset import SceneDataset
+from autolabel.trainer import SimpleTrainer
 
 
 def read_args():

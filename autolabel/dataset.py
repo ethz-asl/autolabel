@@ -196,6 +196,7 @@ class BaseDataset(torch.utils.data.IterableDataset):
             'direction_norms': direction_norms,
             'depth': depths,
             'semantic': semantics,
+            'direction_norms': direction_norms
         }
         if self.features is not None:
             features = np.zeros((batch_size, self.feature_dim),
