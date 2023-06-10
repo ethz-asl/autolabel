@@ -223,5 +223,6 @@ To run yapf on save for Python files, add `autocmd FileType python autocmd BufWr
 ## Research Papers
 
 Baking in the Feature: Accelerating Volumetric Segmentation by Rendering Feature Maps - [Link](https://keke.dev/baking-in-the-feature)
+
 Neural Implicit Vision-Language Feature Fields - [Link](https://arxiv.org/abs/2303.10962)
 
