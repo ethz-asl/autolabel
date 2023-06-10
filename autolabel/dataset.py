@@ -151,50 +151,25 @@ class IndexSampler:
         return sorted(list(indices))
 
 
-class SceneDataset(torch.utils.data.IterableDataset):
+class BaseDataset(torch.utils.data.IterableDataset):
     semantic_image_sample_ratio = 0.5
 
-    def __init__(self,
-                 split,
-                 scene,
-                 factor=4.0,
-                 size=None,
-                 batch_size=4096,
-                 lazy=False,
-                 features=None,
-                 load_semantic=True):
-        self.lazy = lazy
-        self.split = split
+    def __init__(self, batch_size, camera):
+        self.split = "train"
+        self.camera = camera
         self.batch_size = batch_size
-        self.scene = Scene(scene)
-        self.image_names = self.scene.image_names()
         self.pixel_indices = None
         self.index_sampler = None
         self.features = None
-        self.load_semantic = load_semantic
-        camera = self.scene.camera
-        if size is not None:
-            small_size = size
-        else:
-            size = camera.size
-            small_size = (int(size[0] / factor), int(size[1] / factor))
-        image_count = min(
-            [len(self.scene.rgb_paths()),
-             len(self.scene.depth_paths())])
-        self.indices = np.arange(0, image_count)
-        self.resolution = small_size[0] * small_size[1]
-        self.camera = self.scene.camera.scale(small_size)
+        self.resolution = int(self.camera.size[0] * self.camera.size[1])
+        self.w = self.camera.size[0]
+        self.h = self.camera.size[1]
         self.intrinsics = np.array([
             self.camera.camera_matrix[0, 0], self.camera.camera_matrix[1, 1],
             self.camera.camera_matrix[0, 2], self.camera.camera_matrix[1, 2]
         ])
-        self._load_images()
-        self._compute_rays()
-        if features is not None:
-            self._load_features(features)
-        self.error_map = None
-        self.sample_chunk_size = 32
-        self.n_classes = self.scene.n_classes
+        self.sample_chunk_size = 512
+        self.index_sampler = IndexSampler()
 
     def __iter__(self):
         if self.split == "train":
@@ -218,12 +193,13 @@ class SceneDataset(torch.utils.data.IterableDataset):
             'rays_o': ray_o,
             'rays_d': ray_d,
             'pixels': pixels,
+            'direction_norms': direction_norms,
             'depth': depths,
             'semantic': semantics,
             'direction_norms': direction_norms
         }
         if self.features is not None:
-            features = np.zeros((batch_size, self.features.shape[-1]),
+            features = np.zeros((batch_size, self.feature_dim),
                                 dtype=np.float32)
             out['features'] = features
 
@@ -244,12 +220,13 @@ class SceneDataset(torch.utils.data.IterableDataset):
             depths[start:end] = self.depths[image_index][ray_indices] / 1000.0
             semantics[start:end] = self.semantics[image_index][
                 ray_indices].astype(int) - 1
-            ray_o[start:end] = np.broadcast_to(self.origins[image_index, None],
+            ray_o[start:end] = np.broadcast_to(self.origins[image_index][None],
                                                (ray_indices.shape[0], 3))
-            ray_d[start:end], direction_norms[
-                start:end] = self._compute_direction(image_index,
-                                                     ray_indices,
-                                                     randomize=True)
+            dirs, norm = self._compute_direction(image_index,
+                                                 ray_indices,
+                                                 randomize=True)
+            ray_d[start:end] = dirs
+            direction_norms[start:end] = norm
 
             if self.features is not None:
                 width = int(self.w)
@@ -260,7 +237,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
 
                 index = xy_features[:, 1] * self.feature_width + xy_features[:,
                                                                              0]
-                features[start:end] = self.features[image_index, index, :]
+                features[start:end] = self.features[image_index][index, :]
 
         return out
 
@@ -268,12 +245,9 @@ class SceneDataset(torch.utils.data.IterableDataset):
         image = self.images[image_index].reshape(self.h, self.w, 3)
         ray_o = np.broadcast_to(self.origins[image_index],
                                 (self.h, self.w, 3)).astype(np.float32)
-        ray_d, direction_norms = self._compute_direction(
-            image_index, np.arange(self.resolution))
-        direction_norms = direction_norms.reshape(self.h, self.w,
-                                                  1).astype(np.float32)
+        ray_d, norms = self._compute_direction(image_index,
+                                               np.arange(self.resolution))
         ray_d = ray_d.reshape(self.h, self.w, 3).astype(np.float32)
-
         depth = (self.depths[image_index] / 1000.0).reshape(self.h, self.w)
         semantic = (self.semantics[image_index].astype(int) - 1).reshape(
             self.h, self.w)
@@ -285,11 +259,95 @@ class SceneDataset(torch.utils.data.IterableDataset):
             'semantic': semantic,
             'H': self.h,
             'W': self.w,
-            'direction_norms': direction_norms
+            'direction_norms': norms,
         }
         if self.features is not None:
             out['features'] = self.features[image_index]
         return out
+
+    def _convert_pose(self, T_CW):
+        """
+        Returns the transformation that transforms from world to camera
+        coordinates, with all the ngp hacks applied.
+        """
+        T_WC = np.linalg.inv(T_CW) @ CV_TO_OPENGL
+        return nerf_matrix_to_ngp(T_WC, scale=1.0)
+
+    def _compute_rays(self):
+        if self.split == "train":
+            self.images = self.images.reshape(self.n_examples, self.resolution,
+                                              3)
+            self.depths = self.depths.reshape(self.n_examples, self.resolution)
+            self.semantics = self.semantics.reshape(self.n_examples,
+                                                    self.resolution)
+
+    def _compute_direction(self, image_index, ray_indices, randomize=False):
+        """
+        image_index: int, index of image/pose in question
+        ray_indices: np.array[int] N list of pixel indices for which to compute ray direction
+        returns: np.array N x 3 floats
+        """
+        R_WC = self.rotations[image_index]
+        return _compute_direction(R_WC, ray_indices, self.w, self.camera.fx,
+                                  self.camera.fy, self.camera.cx,
+                                  self.camera.cy, randomize)
+
+    def _compute_image_mask(self, images):
+        """
+        From a few rgb images, determine which pixels should be sampled.
+        If pixels are black in all frames, assume they are due to undistortion.
+        """
+        if isinstance(images, LazyImageLoader):
+            indices = np.random.randint(0, len(images), size=5)
+            images = np.stack([images[index] for index in indices])
+        else:
+            images = images[::10]
+        # Remove any pixels that also very dark across all images.
+        # There is likely something weird with the pipeline through which these came from.
+        where_non_zero = np.any(images > (10. / 255.), axis=3)
+        where_non_zero = np.any(where_non_zero.reshape(where_non_zero.shape[0],
+                                                       -1),
+                                axis=0)
+        self.pixel_indices = np.argwhere(where_non_zero).ravel()
+
+
+class SceneDataset(BaseDataset):
+
+    def __init__(self,
+                 split,
+                 scene,
+                 factor=4.0,
+                 size=None,
+                 batch_size=4096,
+                 lazy=False,
+                 features=None,
+                 load_semantic=True):
+        self.lazy = lazy
+        self.scene = Scene(scene)
+        self.image_names = self.scene.image_names()
+        self.pixel_indices = None
+        self.index_sampler = None
+        self.features = None
+        self.load_semantic = load_semantic
+        camera = self.scene.camera
+        if size is not None:
+            small_size = size
+        else:
+            size = camera.size
+            small_size = (int(size[0] / factor), int(size[1] / factor))
+        image_count = min(
+            [len(self.scene.rgb_paths()),
+             len(self.scene.depth_paths())])
+        self.indices = np.arange(0, image_count)
+        camera = self.scene.camera.scale(small_size)
+        super().__init__(batch_size, camera)
+        self.split = split
+        self._load_images()
+        self._compute_rays()
+        if features is not None:
+            self._load_features(features)
+        self.error_map = None
+        self.n_classes = self.scene.n_classes
 
     def _load_images(self):
         images = []
@@ -307,12 +365,11 @@ class SceneDataset(torch.utils.data.IterableDataset):
             if self.lazy:
                 images.append(frame)
             else:
-                image = np.array(Image.open(frame),
-                                 dtype=np.float32)[..., :3] / 255.
+                image = np.array(Image.open(frame), dtype=np.float32)[..., :3]
                 image = cv2.resize(image,
                                    self.camera.size,
-                                   interpolation=cv2.INTER_AREA)
-                images.append(image)
+                                   interpolation=cv2.INTER_NEAREST)
+                images.append(image / 255.)
 
             semantic_path = os.path.join(self.scene.path, 'semantic',
                                          os.path.basename(depth_images[index]))
@@ -325,8 +382,7 @@ class SceneDataset(torch.utils.data.IterableDataset):
                     np.zeros(self.camera.size[::-1], dtype=np.uint8))
 
             T_CW = poses[index]
-            T_WC = np.linalg.inv(T_CW) @ CV_TO_OPENGL
-            T_WC = nerf_matrix_to_ngp(T_WC, scale=1.0)
+            T_WC = self._convert_pose(T_CW)
             cameras.append(T_WC.astype(np.float32))
 
             if self.lazy:
@@ -351,65 +407,15 @@ class SceneDataset(torch.utils.data.IterableDataset):
         aabb = self.scene.bbox()
 
         self.semantics = np.stack(semantics)
-        self.index_sampler = IndexSampler()
         self.index_sampler.update(self.semantics.reshape(-1, self.resolution))
         self._compute_image_mask(self.images)
         self.poses = np.stack(cameras, axis=0)
         self.rotations = np.ascontiguousarray(self.poses[:, :3, :3])
         self.origins = self.poses[:, :3, 3]
         self.n_examples = self.images.shape[0]
-        self.w = self.camera.size[0]
-        self.h = self.camera.size[1]
 
         self.min_bounds = aabb[0]
         self.max_bounds = aabb[1]
-
-    def _compute_rays(self):
-        if self.split == "train":
-            self.images = self.images.reshape(self.n_examples, self.resolution,
-                                              3)
-            self.depths = self.depths.reshape(self.n_examples, self.resolution)
-            self.semantics = self.semantics.reshape(self.n_examples,
-                                                    self.resolution)
-
-    def _compute_direction(self, image_index, ray_indices, randomize=False):
-        """
-        image_index: int, index of image/pose in question
-        ray_indices: np.array[int] N list of pixel indices for which to compute ray direction
-        returns: np.array N x 3 floats
-        """
-        R_WC = self.rotations[image_index]
-        return _compute_direction(R_WC, ray_indices, self.w, self.camera.fx,
-                                  self.camera.fy, self.camera.cx,
-                                  self.camera.cy, randomize)
-
-    def _load_features(self, features):
-        with h5py.File(os.path.join(self.scene.path, 'features.hdf'),
-                       'r') as hdf:
-            features = hdf[f'features/{features}'][:]
-            N, H, W, C = features.shape
-            self.features = features.reshape(N, H * W, C)
-            self.feature_width = W
-            self.feature_height = H
-        scale_factor = np.array(
-            [W / self.camera.size[0], H / self.camera.size[1]])
-        self._scale_to_feature_xy = lambda xy: (xy * scale_factor).astype(int)
-
-    def _compute_image_mask(self, images):
-        """
-        From a few rgb images, determine which pixels should be sampled.
-        If pixels are black in all frames, assume they are due to undistortion.
-        """
-        if isinstance(images, LazyImageLoader):
-            indices = np.random.randint(0, len(images), size=5)
-            images = np.stack([images[index] for index in indices])
-        else:
-            images = images[::10]
-        where_non_zero = np.any(images != 0.0, axis=3)
-        where_non_zero = np.any(where_non_zero.reshape(where_non_zero.shape[0],
-                                                       -1),
-                                axis=0)
-        self.pixel_indices = np.argwhere(where_non_zero).ravel()
 
     def semantic_map_updated(self, image_index):
         filename = f"{self.image_names[image_index]}.png"
@@ -428,3 +434,110 @@ class SceneDataset(torch.utils.data.IterableDataset):
         e.g. during a user simulation.
         """
         self.index_sampler.update(self.semantics)
+
+    def _load_features(self, features):
+        with h5py.File(os.path.join(self.scene.path, 'features.hdf'),
+                       'r') as hdf:
+            features = hdf[f'features/{features}'][:]
+            N, H, W, C = features.shape
+            self.features = features.reshape(N, H * W, C)
+            self.feature_width = W
+            self.feature_height = H
+            self.feature_dim = C
+        scale_factor = np.array(
+            [W / self.camera.size[0], H / self.camera.size[1]])
+        self._scale_to_feature_xy = lambda xy: (xy * scale_factor).astype(int)
+
+
+import threading
+import time
+from collections import deque
+
+
+class DynamicDataset(BaseDataset):
+
+    def __init__(self, batch_size, camera, capacity=None):
+        super().__init__(batch_size, camera)
+        self.capacity = capacity
+        self.poses = []
+        self.rotations = []
+        self.origins = []
+        self.images = []
+        self.depths = []
+        self.features = []
+        self.semantics = []
+        self.n_examples = 0
+        self.prefetch_buffer = deque()
+        self.prefetch_buffer_size = 25
+        self.stopped = False
+        self._prefetch_thread = threading.Thread(target=self._prefetch)
+        self._prefetch_thread.start()
+
+    def stop(self):
+        self.stopped = True
+        self._prefetch_thread.join()
+
+    def _prefetch(self):
+        while not self.stopped:
+            if len(self.features) == 0 or len(
+                    self.prefetch_buffer) >= self.prefetch_buffer_size:
+                time.sleep(0.1)
+                continue
+            self.prefetch_buffer.append(self._next_train())
+
+    def __iter__(self):
+        while True:
+            if len(self.prefetch_buffer) == 0:
+                time.sleep(0.1)
+            else:
+                yield self.prefetch_buffer.popleft()
+
+    def add_frame(self, T_CW, rgb, depth, features):
+        if len(self.features) == 0:
+            self._init_features(features)
+
+        assert depth.dtype == np.uint16
+        assert rgb.dtype == np.uint8
+        assert len(features.shape) == 3
+        assert features.shape[0] == self.feature_height
+
+        if self.pixel_indices is None:
+            self.resolution = rgb.shape[0] * rgb.shape[1]
+            self.pixel_indices = np.arange(self.resolution)
+
+        T_WC = self._convert_pose(T_CW)
+        self.poses.append(T_WC)
+        self.rotations.append(np.ascontiguousarray(T_WC[:3, :3]))
+        self.origins.append(T_WC[:3, 3])
+        self.images.append(rgb.reshape(-1, 3) / 255.)
+        self.depths.append(depth.reshape(-1))
+        self.features.append(
+            features.reshape(self.feature_height * self.feature_width,
+                             features.shape[2]))
+        self.semantics.append(np.zeros(self.resolution, dtype=np.uint16))
+        self.n_examples = len(self.images)
+
+        if self.capacity is not None and len(self.poses) > self.capacity:
+            remove_index = np.random.randint(0, len(self.poses))
+            del self.poses[remove_index]
+            del self.rotations[remove_index]
+            del self.origins[remove_index]
+            del self.images[remove_index]
+            del self.depths[remove_index]
+            del self.features[remove_index]
+            del self.semantics[remove_index]
+            self.n_examples = len(self.images)
+
+    def __len__(self):
+        return self.n_examples
+
+    def _init_features(self, features):
+        H, W, D = features.shape
+        self.feature_height = H
+        self.feature_width = W
+        self.feature_dim = D
+        scale_factor = np.array([
+            self.feature_width / self.camera.size[0],
+            self.feature_height / self.camera.size[1]
+        ])
+        self._scale_to_feature_xy = lambda xy: (xy * scale_factor).astype(int)

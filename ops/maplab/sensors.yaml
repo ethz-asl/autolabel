@@ -1,0 +1,87 @@
+# This sensor file is for the Azure Kinect sensor with serial number: 000215611512
+sensors:
+  - id: 6a62c6daae103f4ff57a132d6f95cec2
+    hardware_id: imu0
+    sensor_type: IMU
+    topic: /imu
+    description: "Kinect IMU"
+    sigmas:
+      acc_noise_density: 0.012674488571727703
+      acc_bias_random_walk_noise_density: 6.264878154268018e-04
+      gyro_noise_density: 9.119351398785344e-04
+      gyro_bias_random_walk_noise_density: 4.990991107926061e-05
+    gravity_magnitude_mps2: 9.81
+    saturation_accel_max_mps2: 150.0 # from docs
+    saturation_gyro_max_radps: 7.5 # from docs
+
+  - id: c63aecb41bfdfd6b7e1fac37c7cbe7bf
+    sensor_type: LIDAR
+    description: "Azure Kinect Point Cloud"
+    topic: /downsampled_pointcloud    # dense raw input: /points2
+
+  - id: aabb23479caf7592b35518478a2fe08f
+    sensor_type: NCAMERA
+    topic: ""
+    description: "Kinect cameras"
+    cameras:
+      - camera:
+          id: 060021388200f6f0f447d0fcd9c64743
+          topic: "/rgb"
+          sensor_type: CAMERA
+          description: "Kinect RGB camera"
+          type: pinhole
+          line-delay-nanoseconds: 46787
+          distortion:
+            type: radial-tangential
+            parameters:
+              cols: 1
+              rows: 4
+              data: [-0.00768, 0.00357181, -0.00067838, 0.00061742]
+          intrinsics:
+            cols: 1
+            rows: 4
+            data: [616.69489627, 616.55821168, 641.53026079, 366.7911744]
+          image_width: 1280
+          image_height: 720
+        T_B_C:
+          cols: 4
+          rows: 4
+          data:
+            - [ 3.57600591e-03,  9.76420929e-03, -9.99945869e-01, -6.36470374e-02]
+            - [-9.99993944e-01,  5.52443020e-04, -3.57077700e-03, -1.26927174e-02]
+            - [ 5.17547624e-04,  9.99952353e-01,  9.76612288e-03, 1.21211569e-02]
+            - [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00, 1.00000000e+00]
+extrinsics:
+  - sensor_id: aabb23479caf7592b35518478a2fe08f
+    base_sensor_id: 6a62c6daae103f4ff57a132d6f95cec2
+    T_B_S:
+      cols: 4
+      rows: 4
+      data:
+        - [1,0,0,0]
+        - [0,1,0,0]
+        - [0,0,1,0]
+        - [0,0,0,1]
+
+  - sensor_id: c63aecb41bfdfd6b7e1fac37c7cbe7bf
+    base_sensor_id: 6a62c6daae103f4ff57a132d6f95cec2
+    T_B_S:
+      cols: 4
+      rows: 4
+      data:
+        - [ 0.00169901,  0.0088201 , -0.99995966, -0.04694762]
+        - [-0.99999853, -0.0002125 , -0.00170095, -0.02854355]
+        - [-0.00022749,  0.99996108,  0.00881972,  0.00325684]
+        - [ 0.0       ,  0.0       ,  0.0       ,  1.0    ]
+
+  - sensor_id: 6a62c6daae103f4ff57a132d6f95cec2
+    base_sensor_id: 6a62c6daae103f4ff57a132d6f95cec2
+    T_B_S:
+      rows: 4
+      cols: 4
+      data:
+        - [1,0,0,0]
+        - [0,1,0,0]
+        - [0,0,1,0]
+        - [0,0,0,1]
+

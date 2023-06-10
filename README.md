@@ -1,6 +1,6 @@
 # Autolabel
 
-The goal of this project is to provide accurate ground truth data for RGB-D sensor streams.
+The goal of this project is to facilitate research in autolabeling, scene understanding and neural implicit feature fields.
 
 https://user-images.githubusercontent.com/1204635/191912816-0de3791c-d29b-458a-aead-ba020a0cc871.mp4
 
@@ -36,10 +36,17 @@ pip install -e .
 bash scripts/install_ext.sh
 popd
 
+# To use LSeg features for vision-language feature fields
+git clone https://github.com/kekeblom/lang-seg
+pushd lang-seg
+pip install -e .
+popd
+
+# Finally install autolabel
 pip install -e .
 ```
 
-### Usage
+### Autolabeling Usage
 
 After installing the project using the instructions above, you can follow these steps to run autolabel on an example scene.
 
@@ -76,7 +83,13 @@ python scripts/export.py bench --objects 1
 python scripts/render.py bench --model-dir bench/nerf/g15_hg+freq_dino_rgb1.0_d0.1_s1.0_f0.5_do0.1/ --out bench.mp4
 ```
 
-### Keybindings
+### Vision-language feature fields
+
+https://github.com/ethz-asl/autolabel/assets/1204635/3ab55149-c907-45e0-8da3-ca9fba090644
+
+The repository contains an implementation of vision-language feature fields. See [`docs/vision-language.md`](docs/vision-language.md) for instructions on how to run and use vision-language examples and the ROS node.
+
+### GUI Keybindings
 
 The GUI can be controlled with the following keybindings:
 
@@ -137,10 +150,11 @@ The computed outputs are:
 
 ## Datasets
 
-Data cam be imported from various sources, including:
+Data can be imported from various sources, including:
 - The [Stray Scanner app](https://apps.apple.com/us/app/stray-scanner/id1557051662)
 - [SemanticNeRF replica renders](https://github.com/Harry-Zhi/semantic_nerf/)
 - [ARKitScenes](https://github.com/apple/ARKitScenes)
+- [ScanNet](https://github.com/ScanNet/ScanNet)
 
 See the [data documentation](docs/data.md) for instructions on how to import from different sources.
 
@@ -209,3 +223,5 @@ To run yapf on save for Python files, add `autocmd FileType python autocmd BufWr
 ## Research Papers
 
 Baking in the Feature: Accelerating Volumetric Segmentation by Rendering Feature Maps - [Link](https://keke.dev/baking-in-the-feature)
+Neural Implicit Vision-Language Feature Fields - [Link](https://arxiv.org/abs/2303.10962)
+

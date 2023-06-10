@@ -51,6 +51,10 @@ class HGFreqEncoder(nn.Module):
     def forward(self, x, bound):
         freq = self.encoder(x)
         normalized = (x + bound) / (2.0 * bound)
+        # Sometimes samples might leak a bit outside the bounds.
+        # This produces NaNs in the grid encoding, so we simply clip those points
+        # assuming there aren't many of these.
+        normalized = torch.clip(normalized, 0.0, 1.0)
         grid = self.grid_encoding(normalized)
         return torch.cat([freq, grid], dim=-1)
 
@@ -65,7 +69,6 @@ class ALNetwork(NeRFRenderer):
                  num_layers_color=3,
                  hidden_dim_color=64,
                  hidden_dim_semantic=64,
-                 dropout=0.1,
                  semantic_classes=2,
                  bound=1,
                  **kwargs):
@@ -115,13 +118,12 @@ class ALNetwork(NeRFRenderer):
             n_input_dims=self.geo_feat_dim,
             n_output_dims=self.hidden_dim_semantic,
             network_config={
-                "otype": "FullyFusedMLP",
+                "otype": "CutlassMLP",
                 "activation": "ReLU",
-                "output_activation": "ReLU",
+                "output_activation": "None",
                 "n_neurons": self.hidden_dim_semantic,
                 "n_hidden_layers": 2
             })
-        self.dropout = nn.Dropout(p=dropout, inplace=True)
         self.semantic_out = tcnn.Network(n_input_dims=self.hidden_dim_semantic +
                                          self.geo_feat_dim,
                                          n_output_dims=semantic_classes,
@@ -165,7 +167,7 @@ class ALNetwork(NeRFRenderer):
 
         features = self.semantic_features(geo_feat)
         semantic = self.semantic_out(
-            self.dropout(torch.cat([features, geo_feat], dim=-1)))
+            torch.cat([F.relu(features), geo_feat], dim=-1))
         semantic = F.softmax(semantic, dim=-1)
 
         return sigma, rgb, semantic
@@ -250,8 +252,8 @@ class ALNetwork(NeRFRenderer):
         returns: [N, C] semantic head outputs
         """
         sem_features = self.semantic_features(geo_features)
-        features = torch.cat([sem_features, geo_features], dim=1)
-        return self.semantic_out(self.dropout(features)), sem_features
+        features = torch.cat([F.relu(sem_features), geo_features], dim=1)
+        return self.semantic_out(features), sem_features
 
     def network_parameters(self):
         """

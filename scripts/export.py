@@ -84,7 +84,9 @@ def render_frame(model, batch):
                            rays_d,
                            direction_norms,
                            staged=True,
-                           perturb=False)
+                           perturb=False,
+                           num_steps=512,
+                           upsample_steps=0)
     return outputs['semantic'].argmax(dim=-1).cpu().numpy()
 
 

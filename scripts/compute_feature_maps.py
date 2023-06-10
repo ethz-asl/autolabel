@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from torchvision.io.image import read_image
 from PIL import Image
 from autolabel.utils import Scene
+from autolabel.utils.feature_utils import get_feature_extractor
 from autolabel.models import Autoencoder
 from sklearn import decomposition
 from tqdm import tqdm
@@ -21,13 +22,19 @@ def read_args():
     parser.add_argument('--video',
                         type=str,
                         help="Create video of maps and write to this path.")
-    parser.add_argument('--features', type=str, choices=['fcn50', 'dino'])
+    parser.add_argument('--features',
+                        type=str,
+                        choices=['fcn50', 'dino', 'lseg'])
+    parser.add_argument('--checkpoint',
+                        type=str,
+                        help="Which model weights to use.")
     parser.add_argument('--dim', type=int, default=64)
     parser.add_argument('--autoencode', action='store_true')
     return parser.parse_args()
 
 
 def compress_features(features, dim):
+    features = np.stack(features)
     N, H, W, C = features.shape
     coder = Autoencoder(C, dim).cuda()
     optimizer = torch.optim.Adam(coder.parameters(), lr=1e-3)
@@ -55,31 +62,46 @@ def compress_features(features, dim):
     return features_out
 
 
+def compute_size(image_path, feature):
+    image = read_image(image_path)
+    _, H, W = image.shape
+    short_side = min(H, W)
+    if feature in ['fcn50', 'dino']:
+        target_size = 720
+    elif feature == 'lseg':
+        target_size = 242
+    scale_factor = target_size / short_side
+    return int(H * scale_factor), int(W * scale_factor)
+
+
 def extract_features(extractor, scene, output_file, flags):
     paths = scene.rgb_paths()
+    H, W = compute_size(paths[0], flags.features)
+
+    shape = extractor.shape((H, W))
+    dataset = output_file.create_dataset(flags.features,
+                                         (len(paths), *shape, flags.dim),
+                                         dtype=np.float16,
+                                         compression='lzf')
 
     extracted = []
     with torch.inference_mode():
         batch_size = 2
         for i in tqdm(range(math.ceil(len(paths) / batch_size))):
-            batch = paths[i * batch_size:(i + 1) * batch_size]
+            index = slice(i * batch_size, (i + 1) * batch_size)
+            batch = paths[index]
             image = torch.stack([read_image(p) for p in batch]).cuda()
-            image = F.interpolate(image, [720, 960])
-            features = extractor(image / 255.)
+            image = F.interpolate(image, [H, W])
+            features = extractor(image / 255.).cpu().numpy()
 
-            extracted += [f for f in features]
-    extracted = np.stack(extracted)
+            if flags.autoencode:
+                extracted += [f for f in features]
+            else:
+                dataset[index] = features[..., :flags.dim]
 
     if flags.autoencode:
         features = compress_features(extracted, flags.dim)
-    else:
-        features = extracted[:, :, :, :flags.dim]
-
-    dataset = output_file.create_dataset(
-        flags.features, (len(paths), *extractor.shape, flags.dim),
-        dtype=np.float16,
-        compression='lzf')
-    dataset[:] = features
+        dataset[:] = features
 
     N, H, W, C = dataset[:].shape
     X = dataset[:].reshape(N * H * W, C)
@@ -129,16 +151,6 @@ def write_video(features, out):
         writer.writeFrame(frame)
 
 
-def get_feature_extractor(features):
-    from autolabel.features import FCN50, Dino
-    if features == 'fcn50':
-        return FCN50()
-    elif features == 'dino':
-        return Dino()
-    else:
-        raise NotImplementedError()
-
-
 def main():
     flags = read_args()
     np.random.seed(0)
@@ -150,7 +162,7 @@ def main():
                             libver='latest')
     group = output_file.create_group('features')
 
-    extractor = get_feature_extractor(flags.features)
+    extractor = get_feature_extractor(flags.features, flags.checkpoint)
 
     extract_features(extractor, scene, group, flags)
     if flags.vis:

@@ -1,0 +1,10 @@
+vi_map_folder_paths:
+  - /tmp/maps/map
+commands:
+  - load --map_folder=<CURRENT_VIMAP_FOLDER>
+  - kfh
+  - lc --lc_num_ransac_iters=1000
+  - optvi
+  - lc --lc_num_ransac_iters=1000
+  - optvi --ba_num_iterations=100
+  - export_trajectory_to_csv --interpolate_to_imu_timestamps --csv_export_format rpg --pose_export_file /tmp/maps/csv_export.csv
